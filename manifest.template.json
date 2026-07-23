@@ -1,11 +1,14 @@
 {
   "format": "ats-plugin",
-  "formatVersion": "1",
+  "formatVersion": "2",
   "plugin": {
     "id": "gacha_analysis",
     "title": "跃迁与祈愿分析",
     "description": "获取并本地分析原神祈愿与星穹铁道跃迁记录，支持 UIGF 导入、导出和合并。",
     "version": "@VERSION_NAME@",
+    "versionCode": @VERSION_CODE@,
+    "minHostVersionCode": @MIN_HOST_VERSION_CODE@,
+    "sdkVersion": "@SDK_VERSION@",
     "author": "Android Tool Suite · Gacha Analysis",
     "entryClass": "com.androidtoolsuite.app.plugins.gacha.GachaAnalysisPlugin"
   },

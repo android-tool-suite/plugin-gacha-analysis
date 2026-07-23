@@ -4,7 +4,9 @@ plugins {
     id "org.jetbrains.kotlin.plugin.compose"
 }
 
-def pluginVersionName = "1.3.1"
+def pluginVersionName = "1.4.0"
+def pluginVersionCode = 8
+def minHostVersionCode = 11
 def pluginSdkVersion = providers.gradleProperty("atsPluginSdkVersion").get()
 
 android {
@@ -15,7 +17,7 @@ android {
         applicationId "com.androidtoolsuite.app.plugin.gacha"
         minSdk 24
         targetSdk 35
-        versionCode 7
+        versionCode pluginVersionCode
         versionName pluginVersionName
     }
 
@@ -44,11 +46,30 @@ dependencies {
 
 def generatePluginManifest = tasks.register("generatePluginManifest", Copy) {
     inputs.property("pluginVersionName", pluginVersionName)
+    inputs.property("pluginVersionCode", pluginVersionCode)
+    inputs.property("minHostVersionCode", minHostVersionCode)
+    inputs.property("pluginSdkVersion", pluginSdkVersion)
     from("manifest.template.json") {
-        filter { line -> line.replace("@VERSION_NAME@", pluginVersionName) }
+        filter { line ->
+            line.replace("@VERSION_NAME@", pluginVersionName)
+                    .replace("@VERSION_CODE@", pluginVersionCode.toString())
+                    .replace("@MIN_HOST_VERSION_CODE@", minHostVersionCode.toString())
+                    .replace("@SDK_VERSION@", pluginSdkVersion)
+        }
         rename { "manifest.json" }
     }
     into layout.buildDirectory.dir("generated/pluginManifest")
+}
+
+tasks.register("packageReleasePlugin", Zip) {
+    dependsOn "assembleRelease", generatePluginManifest
+    archiveFileName = "gacha-analysis.atsplugin"
+    destinationDirectory = layout.buildDirectory.dir("outputs/atsplugin/release")
+    from(generatePluginManifest)
+    from(layout.buildDirectory.dir("outputs/apk/release")) {
+        include "*.apk"
+        rename { "plugin.apk" }
+    }
 }
 
 tasks.register("packagePlugin", Zip) {
