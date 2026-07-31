@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-31T18:15:00+08:00",
+  "sources": [
+    {
+      "id": "paimon-moe",
+      "game": "hk4e",
+      "repository": "MadeBaruna/paimon-moe",
+      "file": "src/data/banners.js",
+      "url": "https://github.com/MadeBaruna/paimon-moe/blob/main/src/data/banners.js",
+      "blobSha": "1b288eb85b10ae97c92b88b2759b390de2af30ed",
+      "sha256": "9684e260933258a59ee36d9750cdb084a4672c4f2524a9c7bcafdc9923daafc4",
+      "license": "MIT",
+      "embeddedEntries": 205
+    },
+    {
+      "id": "star-rail-station",
+      "game": "hkrpg",
+      "url": "https://starrailstation.com/api/v1/warp_config",
+      "snapshotTime": 1785492567,
+      "sha256": "81527c8599e92eab7186416715d57c921727075405f0769274c6e5ef6cf22837",
+      "embeddedEntries": 266
+    },
+    {
+      "id": "hoyolab-genshin-item-catalog",
+      "game": "hk4e",
+      "url": "https://sg-public-api.hoyolab.com/event/simulatoros/config?lang=en-us",
+      "sha256": "feab3cdd2ad8ae3480212045d1e20496d745822619ba299195368fb67b7f78a4",
+      "purpose": "Map Paimon.moe English item slugs to language-independent item IDs"
+    }
+  ]
+}

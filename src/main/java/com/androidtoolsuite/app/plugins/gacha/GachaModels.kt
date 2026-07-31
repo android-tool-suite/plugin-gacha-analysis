@@ -176,6 +176,7 @@ internal data class LocalAccountSnapshot(
     val pityByRecordId: Map<String, Int>,
     val customLossNames: Set<String> = emptySet(),
     val customLossCandidates: List<String> = emptyList(),
+    val bannerHistorySources: Set<BannerHistorySource> = setOf(BannerHistorySource.LOCAL_RULES),
 )
 
 internal object GachaAnalysis {
@@ -183,12 +184,25 @@ internal object GachaAnalysis {
         game: GameKind,
         records: List<GachaRecord>,
         customLossNames: Set<String> = emptySet(),
-    ): List<PoolStats> = snapshot(game, records, customLossNames).poolStats
+        bannerHistorySources: Set<BannerHistorySource> = setOf(BannerHistorySource.LOCAL_RULES),
+        bannerHistory: BannerHistoryIndex = BannerHistoryIndex.EMPTY,
+        accountTimezone: Int = 8,
+    ): List<PoolStats> = snapshot(
+        game,
+        records,
+        customLossNames,
+        bannerHistorySources,
+        bannerHistory,
+        accountTimezone,
+    ).poolStats
 
     fun snapshot(
         game: GameKind,
         records: List<GachaRecord>,
         customLossNames: Set<String> = emptySet(),
+        bannerHistorySources: Set<BannerHistorySource> = setOf(BannerHistorySource.LOCAL_RULES),
+        bannerHistory: BannerHistoryIndex = BannerHistoryIndex.EMPTY,
+        accountTimezone: Int = 8,
     ): LocalAccountSnapshot {
         val grouped = records.groupBy { it.displayPoolType }
         val observedPermanentFiveStars = records.asSequence()
@@ -227,7 +241,14 @@ internal object GachaAnalysis {
                         record = record,
                         pity = pity,
                         isLoss = if (pool.tracksUp) {
-                            isLossFiveStar(record, observedPermanentFiveStars, customLossNames)
+                            classifyLoss(
+                                record = record,
+                                observedPermanentFiveStars = observedPermanentFiveStars,
+                                customLossNames = customLossNames,
+                                sources = bannerHistorySources,
+                                bannerHistory = bannerHistory,
+                                accountTimezone = accountTimezone,
+                            )
                         } else {
                             null
                         },
@@ -261,7 +282,14 @@ internal object GachaAnalysis {
                 if (record.rarity == 5) pity = 0
             }
         }
-        return LocalAccountSnapshot(records, stats, pityByRecordId, customLossNames, customLossCandidates)
+        return LocalAccountSnapshot(
+            records = records,
+            poolStats = stats,
+            pityByRecordId = pityByRecordId,
+            customLossNames = customLossNames,
+            customLossCandidates = customLossCandidates,
+            bannerHistorySources = bannerHistorySources,
+        )
     }
 
     fun overallLuck(stats: List<PoolStats>): String {
@@ -294,9 +322,28 @@ internal object GachaAnalysis {
 
     private fun permanentPoolType(game: GameKind): String = if (game == GameKind.GENSHIN) "200" else "1"
 
-    private fun isLossFiveStar(record: GachaRecord, observed: Set<String>, customLossNames: Set<String>): Boolean {
+    private fun classifyLoss(
+        record: GachaRecord,
+        observedPermanentFiveStars: Set<String>,
+        customLossNames: Set<String>,
+        sources: Set<BannerHistorySource>,
+        bannerHistory: BannerHistoryIndex,
+        accountTimezone: Int,
+    ): Boolean? {
         if (record.name in customLossNames) return true
-        if (record.name in observed) return true
+
+        if (BannerHistorySource.RECORD_FIELD in sources) {
+            record.explicitIsFeatured()?.let { return !it }
+        }
+
+        COMMUNITY_SOURCE_ORDER.forEach { source ->
+            if (source in sources && source.supports(record.game)) {
+                bannerHistory.isFeatured(source, record, accountTimezone)?.let { return !it }
+            }
+        }
+
+        if (BannerHistorySource.LOCAL_RULES !in sources) return null
+        if (record.name in observedPermanentFiveStars) return true
         return record.name in when (record.game) {
             GameKind.GENSHIN -> GENSHIN_STANDARD_FIVE_STARS
             GameKind.STAR_RAIL -> STAR_RAIL_STANDARD_FIVE_STARS
@@ -316,6 +363,10 @@ internal object GachaAnalysis {
     )
 
     private val STAR_RAIL_CHARACTER_EVENT_POOLS = setOf("11", "21")
+    private val COMMUNITY_SOURCE_ORDER = listOf(
+        BannerHistorySource.PAIMON_MOE,
+        BannerHistorySource.STAR_RAIL_STATION,
+    )
 }
 
 internal enum class GachaPage(val label: String) {
@@ -368,6 +419,7 @@ internal data class GachaUiState(
     val mihoyoSessionSaved: Boolean = false,
     val customLossNames: Set<String> = emptySet(),
     val customLossCandidates: List<String> = emptyList(),
+    val bannerHistorySources: Set<BannerHistorySource> = emptySet(),
     val hostRevision: Int = 0,
 )
 
@@ -383,6 +435,7 @@ internal fun GachaUiState.withLocalSnapshot(
     pityByRecordId = snapshot?.pityByRecordId.orEmpty(),
     customLossNames = snapshot?.customLossNames.orEmpty(),
     customLossCandidates = snapshot?.customLossCandidates.orEmpty(),
+    bannerHistorySources = snapshot?.bannerHistorySources.orEmpty(),
     selectedPoolType = "all",
     selectedRarity = 0,
     busy = false,

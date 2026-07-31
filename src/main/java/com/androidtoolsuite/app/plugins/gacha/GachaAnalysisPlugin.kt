@@ -102,6 +102,31 @@ class GachaAnalysisPlugin(
         }
     }
 
+    internal fun setBannerHistorySource(source: BannerHistorySource, selected: Boolean) {
+        val account = selectedAccount()?.takeIf { source.supports(it.game) } ?: return
+        val updated = state.value.bannerHistorySources.toMutableSet().apply {
+            if (selected) add(source) else remove(source)
+        }.toSet()
+        preferences().edit()
+            .putStringSet(bannerHistorySourcePreferenceKey(account), updated.mapTo(HashSet(), BannerHistorySource::preferenceId))
+            .apply()
+        synchronized(snapshotCache) { snapshotCache.remove(account.key) }
+        runTask("正在按新的卡池来源重新分析…") {
+            val accounts = requireStore().accounts()
+            val current = accounts.firstOrNull { it.key == account.key } ?: account
+            val snapshot = loadLocalSnapshot(current)
+            postState {
+                withLocalSnapshot(accounts, current, snapshot).copy(
+                    message = if (selected) {
+                        "已启用${source.label}。"
+                    } else {
+                        "已停用${source.label}。"
+                    },
+                )
+            }
+        }
+    }
+
     internal fun dismissNotice() = updateState { copy(message = null, error = null) }
 
     internal fun setManualLink(raw: String) {
@@ -504,7 +529,14 @@ class GachaAnalysisPlugin(
     private fun loadLocalSnapshot(account: GachaAccount): LocalAccountSnapshot {
         synchronized(snapshotCache) { snapshotCache[account.key] }?.let { return it }
         val records = requireStore().records(account)
-        val snapshot = GachaAnalysis.snapshot(account.game, records, customLossNames(account))
+        val snapshot = GachaAnalysis.snapshot(
+            game = account.game,
+            records = records,
+            customLossNames = customLossNames(account),
+            bannerHistorySources = bannerHistorySources(account),
+            bannerHistory = BannerHistoryIndex.EMBEDDED,
+            accountTimezone = account.timezone,
+        )
         synchronized(snapshotCache) { snapshotCache[account.key] = snapshot }
         return snapshot
     }
@@ -515,6 +547,17 @@ class GachaAnalysisPlugin(
     }
 
     private fun customLossPreferenceKey(account: GachaAccount): String = "$PREF_STAR_RAIL_LOSS_NAMES:${account.uid}"
+
+    private fun bannerHistorySources(account: GachaAccount): Set<BannerHistorySource> {
+        val key = bannerHistorySourcePreferenceKey(account)
+        val preferences = preferences()
+        if (!preferences.contains(key)) return BannerHistorySource.defaultsFor(account.game)
+        val ids = preferences.getStringSet(key, emptySet()).orEmpty()
+        return BannerHistorySource.fromPreferenceIds(ids, account.game)
+    }
+
+    private fun bannerHistorySourcePreferenceKey(account: GachaAccount): String =
+        "$PREF_BANNER_HISTORY_SOURCES:${account.game.code}:${account.uid}"
 
     private fun setLink(link: GachaLink, message: String) {
         currentLink = link
@@ -600,6 +643,7 @@ class GachaAnalysisPlugin(
         private const val PREFS_NAME = "gacha-analysis-preferences"
         private const val PREF_SELECTED_ACCOUNT = "selected-account"
         private const val PREF_STAR_RAIL_LOSS_NAMES = "star-rail-loss-names"
+        private const val PREF_BANNER_HISTORY_SOURCES = "banner-history-sources"
         private val LOGCAT_TIME = Regex("\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}\\.\\d{3}")
     }
 }

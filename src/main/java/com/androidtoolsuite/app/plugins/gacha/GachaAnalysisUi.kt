@@ -195,7 +195,7 @@ private fun OverallLuckCard(stats: List<PoolStats>) {
             color = MaterialTheme.colorScheme.primary,
             fontWeight = FontWeight.Bold,
         )
-        Text("按非常驻池 UP 获取成本评估；“歪”根据常驻五星、本地常驻记录与玩家自选可歪角色推断。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("按非常驻池 UP 获取成本评估；“歪”由用户启用的记录字段、社区卡池历史、本地名单与手动标记共同判定。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         HorizontalDivider(Modifier.padding(vertical = 4.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Metric("总抽数", total.toString(), MaterialTheme.colorScheme.primary)
@@ -534,6 +534,42 @@ private fun DataPage(ui: GachaUiState, plugin: GachaAnalysisPlugin) {
         contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 28.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        plugin.selectedAccount()?.let { account ->
+            item {
+                val availableSources = BannerHistorySource.availableFor(account.game)
+                SuiteCard {
+                    SectionHeader("UP / 歪判定来源", "按当前 UID 保存；切换后立即重新分析，不会改写原始抽卡记录。")
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(availableSources, key = BannerHistorySource::preferenceId) { source ->
+                            val selected = source in ui.bannerHistorySources
+                            FilterChip(
+                                selected = selected,
+                                onClick = { plugin.setBannerHistorySource(source, !selected) },
+                                label = { Text(source.label) },
+                                enabled = !ui.busy,
+                            )
+                        }
+                    }
+                    availableSources.forEach { source ->
+                        Text(
+                            "${source.label}：${source.description}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    val communityCount = when (account.game) {
+                        GameKind.GENSHIN -> EmbeddedBannerHistory.PAIMON_MOE_COUNT
+                        GameKind.STAR_RAIL -> EmbeddedBannerHistory.STAR_RAIL_STATION_COUNT
+                    }
+                    Text(
+                        "社区快照 ${communityCount} 条 · 更新于 ${EmbeddedBannerHistory.GENERATED_AT.take(10)} · 运行时不连接第三方站点",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Notice("判定优先级：手动可歪角色 > 记录原始字段 > 社区历史 > 本地名单。禁用全部来源后，无法确认的五星会显示为未知。", warning = false)
+                }
+            }
+        }
         if (plugin.selectedAccount()?.game == GameKind.STAR_RAIL) {
             item {
                 SuiteCard {
@@ -558,7 +594,7 @@ private fun DataPage(ui: GachaUiState, plugin: GachaAnalysisPlugin) {
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    Notice("选择后，同名五星角色在该账号的历史活动跃迁中都会计为“歪”；无法仅凭抽卡记录自动还原当期 UP 名单。", warning = true)
+                    Notice("手动选择的优先级最高，同名五星会在该 UID 的历史活动跃迁中计为“歪”；可用于修正社区来源缺口或特殊卡池规则。", warning = true)
                 }
             }
         }

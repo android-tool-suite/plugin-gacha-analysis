@@ -2,6 +2,7 @@ package com.androidtoolsuite.app.plugins.gacha
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.assertThrows
 import org.junit.Test
@@ -213,6 +214,131 @@ class GachaAnalysisTest {
     }
 
     @Test
+    fun `record is up field takes priority over local permanent list`() {
+        val record = record(
+            id = "1",
+            type = "301",
+            rarity = 5,
+            name = "七七",
+            isUp = "true",
+        )
+
+        val stats = GachaAnalysis.calculate(
+            game = GameKind.GENSHIN,
+            records = listOf(record),
+            bannerHistorySources = setOf(BannerHistorySource.RECORD_FIELD, BannerHistorySource.LOCAL_RULES),
+        ).single()
+
+        assertEquals(1, stats.upCount)
+        assertEquals(0, stats.lossCount)
+        assertTrue(stats.targetPulls.single().isLoss == false)
+    }
+
+    @Test
+    fun `paimon history identifies featured and off banner five stars`() {
+        val records = listOf(
+            record(
+                id = "1",
+                type = "301",
+                rarity = 5,
+                name = "雷电将军",
+                itemId = "10000052",
+                time = "2021-09-01 06:30:00",
+            ),
+            record(
+                id = "2",
+                type = "301",
+                rarity = 5,
+                name = "七七",
+                itemId = "10000035",
+                time = "2021-09-02 06:30:00",
+            ),
+        )
+
+        val stats = GachaAnalysis.calculate(
+            game = GameKind.GENSHIN,
+            records = records,
+            bannerHistorySources = setOf(BannerHistorySource.PAIMON_MOE),
+            bannerHistory = BannerHistoryIndex.EMBEDDED,
+            accountTimezone = 8,
+        ).single()
+
+        assertTrue(stats.targetPulls.first { it.record.name == "雷电将军" }.isLoss == false)
+        assertTrue(stats.targetPulls.first { it.record.name == "七七" }.isLoss == true)
+    }
+
+    @Test
+    fun `paimon version start is shifted to account server timezone`() {
+        val record = record(
+            id = "1",
+            type = "301",
+            rarity = 5,
+            name = "Raiden Shogun",
+            itemId = "10000052",
+            time = "2021-08-31 17:30:00",
+        )
+
+        val stats = GachaAnalysis.calculate(
+            game = GameKind.GENSHIN,
+            records = listOf(record),
+            bannerHistorySources = setOf(BannerHistorySource.PAIMON_MOE),
+            bannerHistory = BannerHistoryIndex.EMBEDDED,
+            accountTimezone = -5,
+        ).single()
+
+        assertTrue(stats.targetPulls.single().isLoss == false)
+    }
+
+    @Test
+    fun `star rail station matches exact warp id`() {
+        val records = listOf(
+            record(
+                id = "1",
+                type = "11",
+                rarity = 5,
+                game = GameKind.STAR_RAIL,
+                uid = "100000002",
+                name = "希儿",
+                itemId = "1102",
+                gachaId = "2003",
+            ),
+            record(
+                id = "2",
+                type = "11",
+                rarity = 5,
+                game = GameKind.STAR_RAIL,
+                uid = "100000002",
+                name = "白露",
+                itemId = "1211",
+                gachaId = "2003",
+            ),
+        )
+
+        val stats = GachaAnalysis.calculate(
+            game = GameKind.STAR_RAIL,
+            records = records,
+            bannerHistorySources = setOf(BannerHistorySource.STAR_RAIL_STATION),
+            bannerHistory = BannerHistoryIndex.EMBEDDED,
+        ).single()
+
+        assertTrue(stats.targetPulls.first { it.record.name == "希儿" }.isLoss == false)
+        assertTrue(stats.targetPulls.first { it.record.name == "白露" }.isLoss == true)
+    }
+
+    @Test
+    fun `disabled sources leave unclassified five star unknown`() {
+        val stats = GachaAnalysis.calculate(
+            game = GameKind.GENSHIN,
+            records = listOf(record("1", "301", 5, name = "限定角色")),
+            bannerHistorySources = emptySet(),
+        ).single()
+
+        assertEquals(0, stats.upCount)
+        assertEquals(0, stats.lossCount)
+        assertNull(stats.targetPulls.single().isLoss)
+    }
+
+    @Test
     fun `uigf v4 point 2 round trip keeps miliastra records separate`() {
         val account = GachaAccount(GameKind.GENSHIN, "100000001", "cn_gf01", 8, "zh-cn", 1)
         val beyond = record("100", "20021", 5, name = "女性装扮·测试套装").copy(
@@ -270,18 +396,23 @@ class GachaAnalysisTest {
         game: GameKind = GameKind.GENSHIN,
         uid: String = "100000001",
         name: String = "测试物品",
+        itemId: String = "1",
+        gachaId: String = if (game == GameKind.STAR_RAIL) "gacha" else "",
+        time: String = "2026-01-01 00:00:${id.takeLast(2).padStart(2, '0')}",
+        isUp: String = "",
     ) = GachaRecord(
         game = game,
         uid = uid,
         id = id,
         gachaType = type,
         uigfGachaType = if (game == GameKind.GENSHIN) game.normalizedPoolType(type) else "",
-        gachaId = if (game == GameKind.STAR_RAIL) "gacha" else "",
-        itemId = "1",
+        gachaId = gachaId,
+        itemId = itemId,
         name = name,
         itemType = "角色",
         rankType = rarity.toString(),
         count = "1",
-        time = "2026-01-01 00:00:${id.takeLast(2).padStart(2, '0')}",
+        time = time,
+        isUp = isUp,
     )
 }
