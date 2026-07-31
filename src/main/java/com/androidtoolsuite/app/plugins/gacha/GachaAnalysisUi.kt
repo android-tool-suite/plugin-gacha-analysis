@@ -291,7 +291,9 @@ private fun TargetTimelineRow(pull: TargetPull, pool: GachaPool) {
                 Text(pull.record.time.take(10), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             if (pull.luck != LuckGrade.NORMAL) LuckBadge(pull.luck.label, color)
-            pull.isLoss?.let { loss -> LuckBadge(if (loss) "歪" else "UP", if (loss) UnluckyRed else LuckyGreen) }
+            pull.isLoss?.let { loss ->
+                LuckBadge(if (loss) "歪" else "UP", if (loss) UnluckyRed else LuckyGreen)
+            } ?: LuckBadge("未知", MaterialTheme.colorScheme.onSurfaceVariant)
             Text("${pull.pity} 抽", modifier = Modifier.padding(start = 8.dp), fontWeight = FontWeight.Bold)
         }
         Box(Modifier.fillMaxWidth().height(8.dp).background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(99.dp))) {

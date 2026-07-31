@@ -41,6 +41,7 @@ internal class GachaStore(context: Context) : SQLiteOpenHelper(
                 gacha_type TEXT NOT NULL,
                 uigf_gacha_type TEXT NOT NULL DEFAULT '',
                 gacha_id TEXT NOT NULL DEFAULT '',
+                schedule_id TEXT NOT NULL DEFAULT '',
                 item_id TEXT NOT NULL DEFAULT '',
                 name TEXT NOT NULL DEFAULT '',
                 item_type TEXT NOT NULL DEFAULT '',
@@ -61,6 +62,7 @@ internal class GachaStore(context: Context) : SQLiteOpenHelper(
         if (oldVersion < 2) createAccountOrderIndex(db)
         if (oldVersion < 3) db.execSQL("ALTER TABLE records ADD COLUMN is_up TEXT NOT NULL DEFAULT ''")
         if (oldVersion < 4) createPoolSyncStateTable(db)
+        if (oldVersion < 5) db.execSQL("ALTER TABLE records ADD COLUMN schedule_id TEXT NOT NULL DEFAULT ''")
     }
 
     fun accounts(): List<GachaAccount> {
@@ -233,6 +235,7 @@ internal class GachaStore(context: Context) : SQLiteOpenHelper(
         put("gacha_type", gachaType)
         put("uigf_gacha_type", uigfGachaType)
         put("gacha_id", gachaId)
+        put("schedule_id", scheduleId)
         put("item_id", itemId)
         put("name", name)
         put("item_type", itemType)
@@ -249,18 +252,19 @@ internal class GachaStore(context: Context) : SQLiteOpenHelper(
         gachaType = getString(3),
         uigfGachaType = getString(4),
         gachaId = getString(5),
-        itemId = getString(6),
-        name = getString(7),
-        itemType = getString(8),
-        rankType = getString(9),
-        count = getString(10),
-        time = getString(11),
-        isUp = getString(12),
+        scheduleId = getString(6),
+        itemId = getString(7),
+        name = getString(8),
+        itemType = getString(9),
+        rankType = getString(10),
+        count = getString(11),
+        time = getString(12),
+        isUp = getString(13),
     )
 
     companion object {
         private const val DATABASE_NAME = "gacha-analysis.db"
-        private const val DATABASE_VERSION = 4
+        private const val DATABASE_VERSION = 5
         private val RECORD_COLUMNS = arrayOf(
             "game",
             "uid",
@@ -268,6 +272,7 @@ internal class GachaStore(context: Context) : SQLiteOpenHelper(
             "gacha_type",
             "uigf_gacha_type",
             "gacha_id",
+            "schedule_id",
             "item_id",
             "name",
             "item_type",

@@ -74,7 +74,8 @@ internal object UigfCodec {
                     id = id,
                     gachaType = opType,
                     uigfGachaType = GameKind.GENSHIN.normalizedPoolType(opType),
-                    gachaId = item.optString("schedule_id"),
+                    gachaId = item.optString("gacha_id"),
+                    scheduleId = item.optString("schedule_id"),
                     itemId = item.optString("item_id"),
                     name = item.optString("item_name"),
                     itemType = item.optString("item_type"),
@@ -155,6 +156,7 @@ internal object UigfCodec {
                     ""
                 },
                 gachaId = item.optString("gacha_id"),
+                scheduleId = item.optString("schedule_id"),
                 itemId = item.optString("item_id"),
                 name = item.optString("name"),
                 itemType = item.optString("item_type"),
@@ -186,6 +188,8 @@ internal object UigfCodec {
         } else {
             put("gacha_id", record.gachaId)
         }
+        record.scheduleId.takeIf(String::isNotBlank)?.let { put("schedule_id", it) }
+        record.isUp.takeIf(String::isNotBlank)?.let { put("is_up", it) }
         put("gacha_type", record.gachaType)
         put("item_id", record.itemId)
         put("count", record.count.ifBlank { "1" })
@@ -207,7 +211,7 @@ internal object UigfCodec {
                     put(
                         JSONObject()
                             .put("id", record.id)
-                            .put("schedule_id", record.gachaId.ifBlank { "0" })
+                            .put("schedule_id", record.scheduleId.ifBlank { record.gachaId.ifBlank { "0" } })
                             .put("item_type", record.itemType)
                             .put("item_id", record.itemId)
                             .put("item_name", record.name)

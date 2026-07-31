@@ -504,7 +504,7 @@ class GachaAnalysisPlugin(
     private fun loadLocalSnapshot(account: GachaAccount): LocalAccountSnapshot {
         synchronized(snapshotCache) { snapshotCache[account.key] }?.let { return it }
         val records = requireStore().records(account)
-        val snapshot = GachaAnalysis.snapshot(account.game, records, customLossNames(account))
+        val snapshot = GachaAnalysis.snapshot(account.game, records, customLossNames(account), account.timezone)
         synchronized(snapshotCache) { snapshotCache[account.key] = snapshot }
         return snapshot
     }

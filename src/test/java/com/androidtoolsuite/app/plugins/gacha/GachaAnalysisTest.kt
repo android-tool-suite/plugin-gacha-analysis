@@ -6,6 +6,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Assert.assertThrows
 import org.junit.Test
 import org.json.JSONObject
+import java.time.Instant
 
 class GachaAnalysisTest {
     @Test
@@ -138,7 +139,11 @@ class GachaAnalysisTest {
             )
         }
 
-        val stats = GachaAnalysis.calculate(GameKind.GENSHIN, records).single()
+        val stats = GachaAnalysis.calculate(
+            GameKind.GENSHIN,
+            records,
+            metadataSource = metadata(schedule("301", "", "2025-12-31T16:00:00Z", "2026-01-02T15:59:59Z", "限定角色")),
+        ).single()
 
         assertEquals(1, stats.lossCount)
         assertEquals(1, stats.upCount)
@@ -202,7 +207,8 @@ class GachaAnalysisTest {
             )
         }
 
-        val snapshot = GachaAnalysis.snapshot(GameKind.STAR_RAIL, records, setOf("希儿"))
+        val markedRecords = records.map { if (it.name == "当前UP角色") it.copy(isUp = "true") else it }
+        val snapshot = GachaAnalysis.snapshot(GameKind.STAR_RAIL, markedRecords, setOf("希儿"))
         val stats = snapshot.poolStats.single()
 
         assertEquals(1, stats.lossCount)
@@ -217,7 +223,7 @@ class GachaAnalysisTest {
         val account = GachaAccount(GameKind.GENSHIN, "100000001", "cn_gf01", 8, "zh-cn", 1)
         val beyond = record("100", "20021", 5, name = "女性装扮·测试套装").copy(
             uigfGachaType = "2000",
-            gachaId = "20",
+            scheduleId = "20",
             itemType = "装扮套装",
         )
 
@@ -230,7 +236,65 @@ class GachaAnalysisTest {
         assertEquals("2000", decoded.displayPoolType)
         assertEquals("20021", decoded.gachaType)
         assertEquals("女性装扮·测试套装", decoded.name)
-        assertEquals("20", decoded.gachaId)
+        assertEquals("20", decoded.scheduleId)
+    }
+
+    @Test
+    fun `explicit is up has highest priority`() {
+        val source = metadata(schedule("301", "wrong", "2025-01-01T00:00:00Z", "2027-01-01T00:00:00Z", "别人"))
+        val up = record("1", "301", 5, name = "七七").copy(gachaId = "wrong", isUp = "true")
+        val loss = record("2", "301", 5, name = "限定角色").copy(gachaId = "wrong", isUp = "0")
+        val stats = GachaAnalysis.calculate(GameKind.GENSHIN, listOf(up, loss), metadataSource = source).single()
+        assertEquals(false, stats.targetPulls.first { it.record.id == "1" }.isLoss)
+        assertEquals(true, stats.targetPulls.first { it.record.id == "2" }.isLoss)
+    }
+
+    @Test
+    fun `gacha id disambiguates concurrent banners including standard character up`() {
+        val source = metadata(
+            schedule("301", "a", "2025-12-31T16:00:00Z", "2026-01-02T15:59:59Z", "七七"),
+            schedule("301", "b", "2025-12-31T16:00:00Z", "2026-01-02T15:59:59Z", "限定角色"),
+        )
+        val pull = record("1", "301", 5, name = "七七").copy(gachaId = "a")
+        val stats = GachaAnalysis.calculate(GameKind.GENSHIN, listOf(pull), metadataSource = source).single()
+        assertEquals(false, stats.targetPulls.single().isLoss)
+    }
+
+    @Test
+    fun `ambiguous concurrent and unknown banners stay unknown and are not counted`() {
+        val source = metadata(
+            schedule("301", "a", "2025-12-31T16:00:00Z", "2026-01-02T15:59:59Z", "甲"),
+            schedule("301", "b", "2025-12-31T16:00:00Z", "2026-01-02T15:59:59Z", "乙"),
+        )
+        val ambiguous = record("1", "301", 5, name = "甲").copy(gachaId = "")
+        val unknown = record("2", "301", 5, name = "新角色").copy(gachaId = "missing", time = "2030-01-01 00:00:00")
+        val stats = GachaAnalysis.calculate(GameKind.GENSHIN, listOf(ambiguous, unknown), metadataSource = source).single()
+        assertTrue(stats.targetPulls.all { it.isLoss == null })
+        assertEquals(0, stats.upCount)
+        assertEquals(0, stats.lossCount)
+    }
+
+    @Test
+    fun `old record without id uses inclusive boundaries and server timezone`() {
+        val source = metadata(schedule("301", "a", "2025-12-31T16:00:00Z", "2025-12-31T16:00:01Z", "提纳里"))
+        val start = record("1", "301", 5, name = "提纳里").copy(gachaId = "", time = "2026-01-01 00:00:00")
+        val end = record("2", "301", 5, name = "提纳里").copy(gachaId = "", time = "2026-01-01 00:00:01")
+        val stats = GachaAnalysis.calculate(
+            GameKind.GENSHIN, listOf(start, end), serverTimezone = 8, metadataSource = source,
+        ).single()
+        assertEquals(2, stats.upCount)
+        assertTrue(stats.targetPulls.all { it.isLoss == false })
+    }
+
+    @Test
+    fun `new permanent character remains a legacy loss while unrecognized limited is unknown`() {
+        val records = listOf(
+            record("1", "301", 5, name = "梦见月瑞希"),
+            record("2", "301", 5, name = "没有元数据的新限定"),
+        )
+        val stats = GachaAnalysis.calculate(GameKind.GENSHIN, records).single()
+        assertEquals(true, stats.targetPulls.first { it.record.id == "1" }.isLoss)
+        assertEquals(null, stats.targetPulls.first { it.record.id == "2" }.isLoss)
     }
 
     @Test
@@ -284,4 +348,17 @@ class GachaAnalysisTest {
         count = "1",
         time = "2026-01-01 00:00:${id.takeLast(2).padStart(2, '0')}",
     )
+
+    private fun schedule(pool: String, id: String, start: String, end: String, vararg up: String) = BannerSchedule(
+        game = GameKind.GENSHIN,
+        poolType = pool,
+        gachaId = id,
+        startsAt = Instant.parse(start),
+        endsAt = Instant.parse(end),
+        upFiveStarNames = up.toSet(),
+    )
+
+    private fun metadata(vararg schedules: BannerSchedule) = BannerMetadataSource {
+        BannerMetadata("test-v1", Instant.parse("2026-01-01T00:00:00Z"), schedules.toList())
+    }
 }

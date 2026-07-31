@@ -102,6 +102,7 @@ internal data class GachaRecord(
     val gachaType: String,
     val uigfGachaType: String,
     val gachaId: String,
+    val scheduleId: String = "",
     val itemId: String,
     val name: String,
     val itemType: String,
@@ -183,13 +184,18 @@ internal object GachaAnalysis {
         game: GameKind,
         records: List<GachaRecord>,
         customLossNames: Set<String> = emptySet(),
-    ): List<PoolStats> = snapshot(game, records, customLossNames).poolStats
+        serverTimezone: Int = 8,
+        metadataSource: BannerMetadataSource = BundledBannerMetadata,
+    ): List<PoolStats> = snapshot(game, records, customLossNames, serverTimezone, metadataSource).poolStats
 
     fun snapshot(
         game: GameKind,
         records: List<GachaRecord>,
         customLossNames: Set<String> = emptySet(),
+        serverTimezone: Int = 8,
+        metadataSource: BannerMetadataSource = BundledBannerMetadata,
     ): LocalAccountSnapshot {
+        val schedules = metadataSource.current().schedules
         val grouped = records.groupBy { it.displayPoolType }
         val observedPermanentFiveStars = records.asSequence()
             .filter { it.rarity == 5 && it.displayPoolType == permanentPoolType(game) }
@@ -227,7 +233,7 @@ internal object GachaAnalysis {
                         record = record,
                         pity = pity,
                         isLoss = if (pool.tracksUp) {
-                            isLossFiveStar(record, observedPermanentFiveStars, customLossNames)
+                            isLossFiveStar(record, observedPermanentFiveStars, customLossNames, serverTimezone, schedules)
                         } else {
                             null
                         },
@@ -294,13 +300,30 @@ internal object GachaAnalysis {
 
     private fun permanentPoolType(game: GameKind): String = if (game == GameKind.GENSHIN) "200" else "1"
 
-    private fun isLossFiveStar(record: GachaRecord, observed: Set<String>, customLossNames: Set<String>): Boolean {
-        if (record.name in customLossNames) return true
-        if (record.name in observed) return true
-        return record.name in when (record.game) {
+    private fun isLossFiveStar(
+        record: GachaRecord,
+        observed: Set<String>,
+        customLossNames: Set<String>,
+        serverTimezone: Int,
+        schedules: List<BannerSchedule>,
+    ): Boolean? {
+        parseExplicitUp(record.isUp)?.let { return !it }
+        val candidates = BannerMatcher.candidates(record, serverTimezone, schedules)
+        if (candidates.size == 1) return record.name !in candidates.single().upFiveStarNames
+        if (candidates.size > 1) return null
+        // Legacy fallback can prove a loss, but must never turn insufficient metadata into “UP”.
+        if (record.name in customLossNames || record.name in observed) return true
+        if (record.name in when (record.game) {
             GameKind.GENSHIN -> GENSHIN_STANDARD_FIVE_STARS
             GameKind.STAR_RAIL -> STAR_RAIL_STANDARD_FIVE_STARS
-        }
+        }) return true
+        return null
+    }
+
+    private fun parseExplicitUp(raw: String): Boolean? = when (raw.trim().lowercase(Locale.ROOT)) {
+        "1", "true", "yes", "up" -> true
+        "0", "false", "no", "not_up" -> false
+        else -> null
     }
 
     private val GENSHIN_STANDARD_FIVE_STARS = setOf(

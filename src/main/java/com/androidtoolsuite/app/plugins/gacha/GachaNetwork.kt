@@ -165,13 +165,17 @@ internal class GachaApiClient(private val store: GachaStore) {
                     } else {
                         item.optString("gacha_type", pool.type)
                     }
+                    // Observed API fields: normal Genshin returns gacha_id/time (not is_up),
+                    // Star Rail returns gacha_id/time and may return is_up, while Miliastra
+                    // (getBeyondGachaLog) returns schedule_id/time/is_up and op_gacha_type.
                     records += GachaRecord(
                         game = link.game,
                         uid = uid.ifBlank { accountUid },
                         id = id,
                         gachaType = rawType,
                         uigfGachaType = if (link.game == GameKind.GENSHIN) link.game.normalizedPoolType(rawType) else "",
-                        gachaId = if (pool.isBeyond) item.optString("schedule_id") else item.optString("gacha_id"),
+                        gachaId = item.optString("gacha_id"),
+                        scheduleId = item.optString("schedule_id"),
                         itemId = item.optString("item_id"),
                         name = if (pool.isBeyond) item.optString("item_name") else item.optString("name"),
                         itemType = item.optString("item_type"),
