@@ -108,25 +108,22 @@ jobs:
           gh release edit $tag --draft=false --latest
           if ($LASTEXITCODE -ne 0) { throw 'Release publication failed' }
 
+      - name: Create registry app token
+        id: registry-app-token
+        if: github.event_name == 'push' || inputs.publish
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1
+        with:
+          client-id: ${{ vars.REGISTRY_APP_CLIENT_ID }}
+          private-key: ${{ secrets.REGISTRY_APP_PRIVATE_KEY }}
+          owner: android-tool-suite
+          repositories: plugin-registry
+          permission-contents: write
+
       - name: Notify plugin registry
         if: github.event_name == 'push' || inputs.publish
         shell: pwsh
         env:
-          GH_TOKEN: ${{ secrets.REGISTRY_DISPATCH_TOKEN }}
+          GH_TOKEN: ${{ steps.registry-app-token.outputs.token }}
         run: |
-          if ([string]::IsNullOrWhiteSpace($env:GH_TOKEN)) {
-            Write-Warning 'REGISTRY_DISPATCH_TOKEN is not configured; run the plugin-registry deployment workflow manually.'
-            return
-          }
           $tag = if ('${{ github.event_name }}' -eq 'push') { '${{ github.ref_name }}' } else { '${{ inputs.tag }}' }
-          $payload = [ordered]@{
-            event_type = 'component_published'
-            client_payload = [ordered]@{
-              channel = 'release'
-              repository = $env:GITHUB_REPOSITORY
-              commitSha = (git rev-parse HEAD)
-              reference = $tag
-            }
-          } | ConvertTo-Json -Depth 5 -Compress
-          $payload | gh api --method POST repos/android-tool-suite/plugin-registry/dispatches --input -
-          if ($LASTEXITCODE -ne 0) { throw 'Could not notify plugin registry' }
+          .\.github\scripts\dispatch-registry.ps1 -Channel release -Reference $tag

@@ -29,7 +29,7 @@ gradle -p plugins\gacha-analysis `
 
 - 推送 `main` 并通过单元测试与构建后，工作流更新滚动 `debug` 预发布，宿主调试仓库随后可自动发现该构建。
 - 推送 `v<versionName>` 标签后，工作流测试、构建并发布正式 Release。
-- 两种发布都会生成带通道信息的元数据和校验和，并通过 `REGISTRY_DISPATCH_TOKEN` 事件通知插件索引更新。
+- 两种发布都会生成带通道信息的元数据和校验和，并通过 GitHub App 短时令牌发送事件通知插件索引更新。
 
 ## 数据与安全
 
