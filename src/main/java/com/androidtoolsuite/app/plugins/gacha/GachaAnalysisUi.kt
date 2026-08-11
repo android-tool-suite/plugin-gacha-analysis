@@ -27,6 +27,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -48,7 +50,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -66,6 +70,9 @@ import com.androidtoolsuite.app.ui.EmptyState
 import com.androidtoolsuite.app.ui.Notice
 import com.androidtoolsuite.app.ui.SectionHeader
 import com.androidtoolsuite.app.ui.SuiteCard
+import com.androidtoolsuite.app.ui.SuiteSemantic
+import com.androidtoolsuite.app.ui.SuiteShapes
+import com.androidtoolsuite.app.ui.SuiteTheming
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.MultiFormatWriter
 import java.util.Locale
@@ -97,8 +104,19 @@ internal fun GachaAnalysisScreen(plugin: GachaAnalysisPlugin) {
         }
         ui.error?.let { StatusNotice(it, true, plugin::dismissNotice) }
         ui.message?.let { StatusNotice(it, false, plugin::dismissNotice) }
-        Box(Modifier.weight(1f).fillMaxWidth()) {
-            when (ui.page) {
+        // 页码与插件自己的 page 状态双向同步：点标签由第一个 effect 滑过去，
+        // 手指滑动由第二个 effect 回写标签。两边都先比对当前值，避免互相触发。
+        val pagerState = rememberPagerState(initialPage = ui.page.ordinal) { GachaPage.entries.size }
+        LaunchedEffect(ui.page) {
+            if (pagerState.currentPage != ui.page.ordinal) pagerState.animateScrollToPage(ui.page.ordinal)
+        }
+        LaunchedEffect(pagerState) {
+            snapshotFlow { pagerState.settledPage }.collect { page ->
+                GachaPage.entries.getOrNull(page)?.let { if (it != ui.page) plugin.selectPage(it) }
+            }
+        }
+        HorizontalPager(state = pagerState, modifier = Modifier.weight(1f).fillMaxWidth()) { page ->
+            when (GachaPage.entries[page]) {
                 GachaPage.OVERVIEW -> OverviewPage(ui, plugin)
                 GachaPage.RECORDS -> RecordsPage(ui, plugin)
                 GachaPage.ACQUIRE -> AcquirePage(ui, plugin)
@@ -195,13 +213,13 @@ private fun OverallLuckCard(stats: List<PoolStats>) {
             color = MaterialTheme.colorScheme.primary,
             fontWeight = FontWeight.Bold,
         )
-        Text("按非常驻池 UP 获取成本评估；“歪”由用户启用的记录字段、社区卡池历史、本地名单与手动标记共同判定。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("基于限定池 UP 获取成本", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         HorizontalDivider(Modifier.padding(vertical = 4.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Metric("总抽数", total.toString(), MaterialTheme.colorScheme.primary)
-            Metric("五星", fiveStars.toString(), FiveStar)
-            Metric("UP", upCount.toString(), LuckyGreen)
-            Metric("歪", lossCount.toString(), UnluckyRed)
+            Metric("五星", fiveStars.toString(), rarityColor(5))
+            Metric("UP", upCount.toString(), SuiteSemantic.current.success)
+            Metric("歪", lossCount.toString(), SuiteSemantic.current.danger)
         }
     }
 }
@@ -211,7 +229,7 @@ private fun PoolScoreCard(stats: PoolStats, selected: Boolean, onClick: () -> Un
     Card(
         onClick = onClick,
         modifier = Modifier.width(166.dp),
-        shape = RoundedCornerShape(20.dp),
+        shape = SuiteShapes.Inner,
         colors = CardDefaults.cardColors(
             containerColor = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
         ),
@@ -226,7 +244,7 @@ private fun PoolScoreCard(stats: PoolStats, selected: Boolean, onClick: () -> Un
             }
             Text(
                 "${stats.averageLabel} ${if (stats.displayedAverage == 0.0) "—" else String.format(Locale.ROOT, "%.1f", stats.displayedAverage)}",
-                color = if (stats.pool.tracksUp) LuckyGreen else MaterialTheme.colorScheme.primary,
+                color = if (stats.pool.tracksUp) SuiteSemantic.current.success else MaterialTheme.colorScheme.primary,
                 style = MaterialTheme.typography.bodySmall,
             )
         }
@@ -257,7 +275,11 @@ private fun PoolTimelineCard(stats: PoolStats) {
                 rarityColor(stats.pool.targetRarity),
             )
             if (stats.pool.tracksUp) {
-                Metric("UP / 歪", "${stats.upCount} / ${stats.lossCount}", if (stats.lossCount == 0) LuckyGreen else UnluckyRed)
+                Metric(
+                    "UP / 歪",
+                    "${stats.upCount} / ${stats.lossCount}",
+                    if (stats.lossCount == 0) SuiteSemantic.current.success else SuiteSemantic.current.danger,
+                )
             } else {
                 val secondaryRarity = if (stats.pool.targetRarity == 4) 3 else 4
                 val secondaryCount = stats.countForRarity(secondaryRarity)
@@ -282,7 +304,7 @@ private fun TargetTimelineRow(pull: TargetPull, pool: GachaPool) {
     val color = luckColor(pull.luck)
     val targetColor = rarityColor(pool.targetRarity)
     Column(
-        Modifier.fillMaxWidth().background(color.copy(alpha = .09f), RoundedCornerShape(16.dp)).padding(12.dp),
+        Modifier.fillMaxWidth().background(color.copy(alpha = .09f), SuiteShapes.Inner).padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(7.dp),
     ) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -291,7 +313,12 @@ private fun TargetTimelineRow(pull: TargetPull, pool: GachaPool) {
                 Text(pull.record.time.take(10), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             if (pull.luck != LuckGrade.NORMAL) LuckBadge(pull.luck.label, color)
-            pull.isLoss?.let { loss -> LuckBadge(if (loss) "歪" else "UP", if (loss) UnluckyRed else LuckyGreen) }
+            pull.isLoss?.let { loss ->
+                LuckBadge(
+                    if (loss) "歪" else "UP",
+                    if (loss) SuiteSemantic.current.danger else SuiteSemantic.current.success,
+                )
+            }
             Text("${pull.pity} 抽", modifier = Modifier.padding(start = 8.dp), fontWeight = FontWeight.Bold)
         }
         Box(Modifier.fillMaxWidth().height(8.dp).background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(99.dp))) {
@@ -375,7 +402,7 @@ private fun RecordsPage(ui: GachaUiState, plugin: GachaAnalysisPlugin) {
 @Composable
 private fun RecordCard(record: GachaRecord, pity: Int) {
     val color = rarityColor(record.rarity)
-    Card(colors = CardDefaults.cardColors(containerColor = color.copy(alpha = .09f)), shape = RoundedCornerShape(18.dp)) {
+    Card(colors = CardDefaults.cardColors(containerColor = color.copy(alpha = .09f)), shape = SuiteShapes.Inner) {
         Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("${record.rarity}★", modifier = Modifier.width(42.dp), color = color, fontWeight = FontWeight.Bold)
             Column(Modifier.weight(1f)) {
@@ -494,7 +521,7 @@ private fun ShizukuCard(ui: GachaUiState, plugin: GachaAnalysisPlugin) {
         SectionHeader("Shizuku 捕获", "打开游戏历史记录后，从系统日志中筛选链接。")
         val status = when {
             !plugin.isShizukuReady() -> "Shizuku 未连接"
-            !plugin.hasShizukuPermission() -> "等待宿主获得 Shizuku 授权"
+            !plugin.hasShizukuPermission() -> "等待本应用获得 Shizuku 授权"
             !plugin.isShellConnected() -> "等待 UserService 连接"
             ui.shizukuCapturing -> "正在捕获"
             else -> "已就绪"
@@ -537,8 +564,9 @@ private fun DataPage(ui: GachaUiState, plugin: GachaAnalysisPlugin) {
         plugin.selectedAccount()?.let { account ->
             item {
                 val availableSources = BannerHistorySource.availableFor(account.game)
+                var sourcesExpanded by remember(account.key) { mutableStateOf(false) }
                 SuiteCard {
-                    SectionHeader("UP / 歪判定来源", "按当前 UID 保存；切换后立即重新分析，不会改写原始抽卡记录。")
+                    SectionHeader("UP / 歪判定来源", "切换后立即重新分析，不改写原始记录")
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         items(availableSources, key = BannerHistorySource::preferenceId) { source ->
                             val selected = source in ui.bannerHistorySources
@@ -550,23 +578,32 @@ private fun DataPage(ui: GachaUiState, plugin: GachaAnalysisPlugin) {
                             )
                         }
                     }
-                    availableSources.forEach { source ->
+                    TextButton(onClick = { sourcesExpanded = !sourcesExpanded }) {
+                        Text(if (sourcesExpanded) "收起说明" else "各来源说明")
+                    }
+                    if (sourcesExpanded) {
+                        availableSources.forEach { source ->
+                            Text(
+                                "${source.label}：${source.description}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        val communityCount = when (account.game) {
+                            GameKind.GENSHIN -> EmbeddedBannerHistory.PAIMON_MOE_COUNT
+                            GameKind.STAR_RAIL -> EmbeddedBannerHistory.STAR_RAIL_STATION_COUNT
+                        }
                         Text(
-                            "${source.label}：${source.description}",
+                            "社区快照 $communityCount 条 · 更新于 ${EmbeddedBannerHistory.GENERATED_AT.take(10)}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Text(
+                            "判定优先级：手动可歪角色 > 记录原始字段 > 社区历史 > 本地名单",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    val communityCount = when (account.game) {
-                        GameKind.GENSHIN -> EmbeddedBannerHistory.PAIMON_MOE_COUNT
-                        GameKind.STAR_RAIL -> EmbeddedBannerHistory.STAR_RAIL_STATION_COUNT
-                    }
-                    Text(
-                        "社区快照 ${communityCount} 条 · 更新于 ${EmbeddedBannerHistory.GENERATED_AT.take(10)} · 运行时不连接第三方站点",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Notice("判定优先级：手动可歪角色 > 记录原始字段 > 社区历史 > 本地名单。禁用全部来源后，无法确认的五星会显示为未知。", warning = false)
                 }
             }
         }
@@ -630,7 +667,7 @@ private fun DataPage(ui: GachaUiState, plugin: GachaAnalysisPlugin) {
 private fun MihoyoQrDialog(url: String, status: String, plugin: GachaAnalysisPlugin) {
     val bitmap = remember(url) { createQrBitmap(url, 720) }
     Dialog(onDismissRequest = plugin::closeMihoyoQr) {
-        Card(shape = RoundedCornerShape(24.dp)) {
+        Card(shape = SuiteShapes.Card) {
             Column(
                 Modifier.fillMaxWidth().padding(20.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -641,7 +678,7 @@ private fun MihoyoQrDialog(url: String, status: String, plugin: GachaAnalysisPlu
                 Image(
                     bitmap = bitmap.asImageBitmap(),
                     contentDescription = "米游社登录二维码",
-                    modifier = Modifier.size(252.dp).background(Color.White, RoundedCornerShape(16.dp)).padding(10.dp),
+                    modifier = Modifier.size(252.dp).background(Color.White, SuiteShapes.Inner).padding(10.dp),
                 )
                 Text(status.ifBlank { "等待米游社扫码确认" }, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                 Text("推荐用另一台设备的米游社扫码；同机也可打开扫码页完成确认，返回后会继续轮询。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -667,7 +704,7 @@ private fun createQrBitmap(content: String, size: Int): Bitmap {
 @Composable
 private fun MihoyoRoleDialog(roles: List<MihoyoRole>, plugin: GachaAnalysisPlugin) {
     Dialog(onDismissRequest = plugin::dismissMihoyoRoles) {
-        Card(shape = RoundedCornerShape(24.dp)) {
+        Card(shape = SuiteShapes.Card) {
             Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("选择原神角色", style = MaterialTheme.typography.titleLarge)
                 Text("生成链接后，临时 Cookie 会从内存清理；加密登录状态会保留，便于下次快速获取。", color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -706,7 +743,7 @@ private fun EmbeddedBrowserDialog(mode: BrowserMode, plugin: GachaAnalysisPlugin
         }
     }
     Dialog(onDismissRequest = { plugin.closeBrowser() }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Card(modifier = Modifier.fillMaxWidth(.98f).fillMaxHeight(.96f), shape = RoundedCornerShape(22.dp)) {
+        Card(modifier = Modifier.fillMaxWidth(.98f).fillMaxHeight(.96f), shape = SuiteShapes.Card) {
             Column(Modifier.fillMaxSize()) {
                 Row(
                     Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp),
@@ -768,24 +805,39 @@ private fun EmbeddedBrowserDialog(mode: BrowserMode, plugin: GachaAnalysisPlugin
     }
 }
 
-@Composable
-private fun rarityColor(rarity: Int): Color = when (rarity) {
-    5 -> FiveStar
-    4 -> FourStar
-    else -> ThreeStar
-}
-
 private fun signedTimezone(value: Int): String = if (value >= 0) "+$value" else value.toString()
 
-private fun luckColor(grade: LuckGrade): Color = when (grade) {
-    LuckGrade.SUPER_LUCKY, LuckGrade.LUCKY -> LuckyGreen
-    LuckGrade.NORMAL -> NormalAmber
-    LuckGrade.UNLUCKY, LuckGrade.VERY_UNLUCKY -> UnluckyRed
+/**
+ * 抽卡稀有度配色属于本插件的领域知识，游戏本身就用金/紫/蓝表示 5/4/3 星，
+ * 因此调色板留在插件里，不进 SDK。深色档位单独给值，避免浅色的深金在深色面板上发闷。
+ */
+private object GachaRarityPalette {
+    private val lightFive = Color(0xFFB07206)
+    private val darkFive = Color(0xFFF0C060)
+    private val lightFour = Color(0xFF7C4CA8)
+    private val darkFour = Color(0xFFD2AAF0)
+    private val lightThree = Color(0xFF3A6DA8)
+    private val darkThree = Color(0xFF9FC6F0)
+
+    fun five(dark: Boolean): Color = if (dark) darkFive else lightFive
+    fun four(dark: Boolean): Color = if (dark) darkFour else lightFour
+    fun three(dark: Boolean): Color = if (dark) darkThree else lightThree
 }
 
-private val FiveStar = Color(0xFFD99A19)
-private val FourStar = Color(0xFF8A5CC7)
-private val ThreeStar = Color(0xFF3F7DB8)
-private val LuckyGreen = Color(0xFF2EAD68)
-private val NormalAmber = Color(0xFFD6A326)
-private val UnluckyRed = Color(0xFFE85D5D)
+@Composable
+private fun rarityColor(rarity: Int): Color {
+    val dark = SuiteTheming.isDark
+    return when (rarity) {
+        5 -> GachaRarityPalette.five(dark)
+        4 -> GachaRarityPalette.four(dark)
+        else -> GachaRarityPalette.three(dark)
+    }
+}
+
+/** 运气档位是「好/一般/差」的语义判断，直接用 SDK 语义色，跟宿主的成功/警告/危险保持一致。 */
+@Composable
+private fun luckColor(grade: LuckGrade): Color = when (grade) {
+    LuckGrade.SUPER_LUCKY, LuckGrade.LUCKY -> SuiteSemantic.current.success
+    LuckGrade.NORMAL -> SuiteSemantic.current.warning
+    LuckGrade.UNLUCKY, LuckGrade.VERY_UNLUCKY -> SuiteSemantic.current.danger
+}
