@@ -4,6 +4,10 @@ import android.content.ContentValues
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
+import android.util.JsonWriter
+import java.io.FilterOutputStream
+import java.io.OutputStream
+import java.io.OutputStreamWriter
 
 internal data class GachaBundle(
     val account: GachaAccount,
@@ -176,6 +180,88 @@ internal class GachaStore(context: Context) : SQLiteOpenHelper(
         }
     }
 
+    /** Opens the v1 database read-only so Bridge export can never trigger a schema upgrade. */
+    fun exportLegacyDatasetReadOnly(context: Context, game: GameKind, output: OutputStream) {
+        val databaseFile = context.getDatabasePath(DATABASE_NAME)
+        require(databaseFile.isFile) { "旧抽卡数据库不存在" }
+        SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READONLY).use { database ->
+            writeLegacyDataset(database, game, output)
+        }
+    }
+
+    private fun writeLegacyDataset(database: SQLiteDatabase, game: GameKind, output: OutputStream) {
+        JsonWriter(OutputStreamWriter(NonClosingOutputStream(output), Charsets.UTF_8)).use { json ->
+            json.beginObject()
+            json.name("formatVersion").value(1L)
+            json.name("game").value(game.code)
+            json.name("accounts").beginArray()
+            database.query(
+                "accounts",
+                arrayOf("uid", "region", "timezone", "lang", "last_sync"),
+                "game = ?",
+                arrayOf(game.code),
+                null,
+                null,
+                "uid ASC",
+            ).use { cursor ->
+                while (cursor.moveToNext()) {
+                    json.beginObject()
+                    json.name("uid").value(cursor.getString(0))
+                    json.name("region").value(cursor.getString(1))
+                    json.name("timezone").value(cursor.getInt(2).toLong())
+                    json.name("lang").value(cursor.getString(3))
+                    json.name("lastSyncAt").value(cursor.getLong(4))
+                    json.endObject()
+                }
+            }
+            json.endArray()
+            json.name("records").beginArray()
+            val columns = RECORD_COLUMNS.drop(1)
+            database.query(
+                "records",
+                columns.toTypedArray(),
+                "game = ?",
+                arrayOf(game.code),
+                null,
+                null,
+                "uid ASC, length(id) ASC, id ASC",
+            ).use { cursor ->
+                while (cursor.moveToNext()) {
+                    json.beginObject()
+                    columns.forEachIndexed { index, column -> json.name(column).value(cursor.getString(index)) }
+                    json.endObject()
+                }
+            }
+            json.endArray()
+            json.name("poolSyncState").beginArray()
+            database.query(
+                "pool_sync_state",
+                arrayOf("uid", "pool_type", "history_complete"),
+                "game = ?",
+                arrayOf(game.code),
+                null,
+                null,
+                "uid ASC, pool_type ASC",
+            ).use { cursor ->
+                while (cursor.moveToNext()) {
+                    json.beginObject()
+                    json.name("uid").value(cursor.getString(0))
+                    json.name("poolType").value(cursor.getString(1))
+                    json.name("historyComplete").value(cursor.getInt(2) != 0)
+                    json.endObject()
+                }
+            }
+            json.endArray()
+            json.endObject()
+            json.flush()
+        }
+    }
+
+    /** JsonWriter may close its encoder, but the Host owns the enclosing Dataset stream. */
+    private class NonClosingOutputStream(output: OutputStream) : FilterOutputStream(output) {
+        override fun close() = flush()
+    }
+
     private fun upsertAccount(db: SQLiteDatabase, account: GachaAccount) {
         db.insertWithOnConflict(
             "accounts",
@@ -259,7 +345,7 @@ internal class GachaStore(context: Context) : SQLiteOpenHelper(
     )
 
     companion object {
-        private const val DATABASE_NAME = "gacha-analysis.db"
+        const val DATABASE_NAME = "gacha-analysis.db"
         private const val DATABASE_VERSION = 4
         private val RECORD_COLUMNS = arrayOf(
             "game",

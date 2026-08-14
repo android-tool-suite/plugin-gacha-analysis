@@ -23,6 +23,12 @@ internal class MihoyoSessionStore(context: Context) {
         }
     }
 
+    /** Bridge-only read that never clears legacy state when decryption fails. */
+    fun migrationSession(): String? {
+        val payload = preferences.getString(KEY_SESSION, null) ?: return null
+        return decrypt(payload, existingSecretKey())
+    }
+
     fun save(cookie: String) {
         require(cookie.isNotBlank()) { "米游社登录信息为空" }
         preferences.edit().putString(KEY_SESSION, encrypt(cookie)).apply()
@@ -41,15 +47,26 @@ internal class MihoyoSessionStore(context: Context) {
     }
 
     private fun decrypt(payload: String): String {
+        return decrypt(payload, secretKey())
+    }
+
+    private fun decrypt(payload: String, key: SecretKey): String {
         val parts = payload.split('.', limit = 2)
         require(parts.size == 2) { "米游社登录密文损坏" }
         val cipher = Cipher.getInstance(TRANSFORMATION)
         cipher.init(
             Cipher.DECRYPT_MODE,
-            secretKey(),
+            key,
             GCMParameterSpec(128, Base64.decode(parts[0], Base64.NO_WRAP)),
         )
         return String(cipher.doFinal(Base64.decode(parts[1], Base64.NO_WRAP)), Charsets.UTF_8)
+    }
+
+    private fun existingSecretKey(): SecretKey {
+        val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+        return requireNotNull(keyStore.getKey(KEY_ALIAS, null) as? SecretKey) {
+            "米游社会话 Keystore 密钥不存在"
+        }
     }
 
     private fun secretKey(): SecretKey {

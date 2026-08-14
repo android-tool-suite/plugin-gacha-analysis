@@ -14,6 +14,7 @@ import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
 import com.androidtoolsuite.app.plugin.api.PluginHost
 import com.androidtoolsuite.app.plugin.api.ToolPlugin
+import com.androidtoolsuite.app.plugin.migration.LegacyDataBridge
 import com.androidtoolsuite.app.plugin.gacha.BuildConfig
 import com.androidtoolsuite.app.plugin.model.ImportedPluginDescriptor
 import com.androidtoolsuite.app.ui.composePluginView
@@ -50,6 +51,7 @@ class GachaAnalysisPlugin(
     override fun version(): String = descriptor.version
     override fun removable(): Boolean = true
     override fun dependencies(): Set<String> = descriptor.dependencies
+    override fun legacyDataBridge(): LegacyDataBridge = GachaLegacyDataBridge()
 
     override fun createView(activity: Activity, host: PluginHost): View {
         if (this.activity !== activity || rootView == null) {
