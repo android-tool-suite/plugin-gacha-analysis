@@ -19,6 +19,18 @@ class GachaLegacyFixtureTest {
         assertEquals("100000002", starRail.getJSONArray("records").getJSONObject(0).getString("uid"))
     }
 
+    @Test fun streamedRecordProofIsDeterministic() {
+        val keys = (1..20_000).map {
+            GachaDatasetIntegrity.recordKey(
+                GameKind.GENSHIN.code,
+                "100000001",
+                it.toString().padStart(19, '0'),
+            )
+        }
+        assertEquals(GachaDatasetIntegrity.digest(keys), GachaDatasetIntegrity.digest(keys.shuffled()))
+        assertEquals(keys.size, keys.toSet().size)
+    }
+
     private fun fixture(name: String) = JSONObject(
         checkNotNull(javaClass.getResource("/legacy/$name")).readText(),
     )

@@ -4,8 +4,12 @@ import android.content.ContentValues
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
+import android.util.JsonReader
+import android.util.JsonToken
 import android.util.JsonWriter
 import java.io.FilterOutputStream
+import java.io.InputStream
+import java.io.InputStreamReader
 import java.io.OutputStream
 import java.io.OutputStreamWriter
 
@@ -262,6 +266,250 @@ internal class GachaStore(context: Context) : SQLiteOpenHelper(
         override fun close() = flush()
     }
 
+    /** Streams a Bridge Dataset into the v1 database inside one SQLite transaction. */
+    fun importLegacyDataset(
+        input: InputStream,
+        expectedGame: GameKind,
+        expectedFormatVersion: Int,
+    ): GachaDatasetIntegrity {
+        var formatVersion = 0
+        var game: GameKind? = null
+        val accountUids = linkedSetOf<String>()
+        val recordKeys = linkedSetOf<String>()
+        val poolStates = linkedMapOf<String, Boolean>()
+        val db = writableDatabase
+        db.beginTransaction()
+        val integrity = try {
+            val json = JsonReader(InputStreamReader(input, Charsets.UTF_8))
+            json.beginObject()
+            while (json.hasNext()) {
+                when (json.nextName()) {
+                    "formatVersion" -> formatVersion = json.nextInt()
+                    "game" -> {
+                        game = requireNotNull(GameKind.fromCode(json.nextString())) { "Dataset 游戏类型无效" }
+                        require(game == expectedGame) { "Dataset 游戏类型与所选数据集不一致" }
+                    }
+                    "accounts" -> {
+                        val resolvedGame = requireNotNull(game) { "Dataset 必须先声明游戏类型" }
+                        json.beginArray()
+                        while (json.hasNext()) {
+                            val account = readDatasetAccount(json, resolvedGame)
+                            accountUids += account.uid
+                            upsertAccount(db, account)
+                        }
+                        json.endArray()
+                    }
+                    "records" -> {
+                        val resolvedGame = requireNotNull(game) { "Dataset 必须先声明游戏类型" }
+                        json.beginArray()
+                        while (json.hasNext()) {
+                            val record = readDatasetRecord(json, resolvedGame)
+                            accountUids += record.uid
+                            ensureDatasetAccount(db, resolvedGame, record.uid)
+                            db.insertWithOnConflict(
+                                "records",
+                                null,
+                                record.toValues(),
+                                SQLiteDatabase.CONFLICT_IGNORE,
+                            )
+                            recordKeys += GachaDatasetIntegrity.recordKey(
+                                resolvedGame.code,
+                                record.uid,
+                                record.id,
+                            )
+                        }
+                        json.endArray()
+                    }
+                    "poolSyncState" -> {
+                        val resolvedGame = requireNotNull(game) { "Dataset 必须先声明游戏类型" }
+                        json.beginArray()
+                        while (json.hasNext()) {
+                            val state = readDatasetPoolState(json)
+                            accountUids += state.uid
+                            ensureDatasetAccount(db, resolvedGame, state.uid)
+                            writePoolSyncState(
+                                db,
+                                resolvedGame,
+                                state.uid,
+                                state.poolType,
+                                state.complete,
+                            )
+                            poolStates[GachaDatasetIntegrity.poolKey(
+                                resolvedGame.code,
+                                state.uid,
+                                state.poolType,
+                            )] = state.complete
+                        }
+                        json.endArray()
+                    }
+                    else -> json.skipValue()
+                }
+            }
+            json.endObject()
+            require(formatVersion == expectedFormatVersion) { "抽卡 Dataset 格式版本不一致" }
+            val resolvedGame = requireNotNull(game) { "Dataset 缺少游戏类型" }
+            db.setTransactionSuccessful()
+            GachaDatasetIntegrity(resolvedGame.code, accountUids, recordKeys, poolStates)
+        } finally {
+            db.endTransaction()
+        }
+        return integrity
+    }
+
+    fun validateLegacyDataset(expected: GachaDatasetIntegrity) {
+        val foundAccounts = linkedSetOf<String>()
+        readableDatabase.query(
+            "accounts",
+            arrayOf("uid"),
+            "game = ?",
+            arrayOf(expected.gameCode),
+            null,
+            null,
+            "uid ASC",
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                cursor.getString(0).takeIf(expected.accountUids::contains)?.let(foundAccounts::add)
+            }
+        }
+        check(foundAccounts.size == expected.accountCount) {
+            "抽卡 Dataset 账号校验失败：期望 ${expected.accountCount}，实际 ${foundAccounts.size}"
+        }
+
+        val foundRecords = linkedSetOf<String>()
+        readableDatabase.query(
+            "records",
+            arrayOf("uid", "id"),
+            "game = ?",
+            arrayOf(expected.gameCode),
+            null,
+            null,
+            "uid ASC, length(id) ASC, id ASC",
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                val key = GachaDatasetIntegrity.recordKey(
+                    expected.gameCode,
+                    cursor.getString(0),
+                    cursor.getString(1),
+                )
+                if (key in expected.recordKeys) foundRecords += key
+            }
+        }
+        val foundDigest = GachaDatasetIntegrity.digest(foundRecords)
+        check(foundRecords.size == expected.recordCount && foundDigest == expected.recordDigest) {
+            "抽卡 Dataset 记录校验失败：期望 ${expected.recordCount}/${expected.recordDigest}，" +
+                "实际 ${foundRecords.size}/$foundDigest"
+        }
+
+        val foundPoolStates = linkedMapOf<String, Boolean>()
+        readableDatabase.query(
+            "pool_sync_state",
+            arrayOf("uid", "pool_type", "history_complete"),
+            "game = ?",
+            arrayOf(expected.gameCode),
+            null,
+            null,
+            "uid ASC, pool_type ASC",
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                val key = GachaDatasetIntegrity.poolKey(
+                    expected.gameCode,
+                    cursor.getString(0),
+                    cursor.getString(1),
+                )
+                if (key in expected.poolStates) foundPoolStates[key] = cursor.getInt(2) != 0
+            }
+        }
+        check(foundPoolStates == expected.poolStates) { "抽卡 Dataset 卡池同步状态校验失败" }
+    }
+
+    private fun readDatasetAccount(json: JsonReader, game: GameKind): GachaAccount {
+        var uid: String? = null
+        var region = ""
+        var timezone = 8
+        var lang = "zh-cn"
+        var lastSyncAt = 0L
+        json.beginObject()
+        while (json.hasNext()) when (json.nextName()) {
+            "uid" -> uid = json.nextString()
+            "region" -> region = nextDatasetString(json, "")
+            "timezone" -> timezone = json.nextInt()
+            "lang" -> lang = nextDatasetString(json, "zh-cn")
+            "lastSyncAt" -> lastSyncAt = json.nextLong()
+            else -> json.skipValue()
+        }
+        json.endObject()
+        return GachaAccount(
+            game,
+            requireNotNull(uid?.takeIf(String::isNotBlank)) { "账号缺少 UID" },
+            region,
+            timezone,
+            lang,
+            lastSyncAt,
+        )
+    }
+
+    private fun readDatasetRecord(json: JsonReader, game: GameKind): GachaRecord {
+        val values = linkedMapOf<String, String>()
+        json.beginObject()
+        while (json.hasNext()) {
+            val name = json.nextName()
+            values[name] = nextDatasetString(json, if (name == "count") "1" else "")
+        }
+        json.endObject()
+        return GachaRecord(
+            game = game,
+            uid = requireNotNull(values["uid"]?.takeIf(String::isNotBlank)) { "记录缺少 UID" },
+            id = requireNotNull(values["id"]?.takeIf(String::isNotBlank)) { "记录缺少 ID" },
+            gachaType = values["gacha_type"].orEmpty(),
+            uigfGachaType = values["uigf_gacha_type"].orEmpty(),
+            gachaId = values["gacha_id"].orEmpty(),
+            itemId = values["item_id"].orEmpty(),
+            name = values["name"].orEmpty(),
+            itemType = values["item_type"].orEmpty(),
+            rankType = values["rank_type"].orEmpty(),
+            count = values["count"] ?: "1",
+            time = values["time"].orEmpty(),
+            isUp = values["is_up"].orEmpty(),
+        )
+    }
+
+    private data class DatasetPoolState(
+        val uid: String,
+        val poolType: String,
+        val complete: Boolean,
+    )
+
+    private fun readDatasetPoolState(json: JsonReader): DatasetPoolState {
+        var uid: String? = null
+        var poolType: String? = null
+        var complete = false
+        json.beginObject()
+        while (json.hasNext()) when (json.nextName()) {
+            "uid" -> uid = json.nextString()
+            "poolType" -> poolType = json.nextString()
+            "historyComplete" -> complete = json.nextBoolean()
+            else -> json.skipValue()
+        }
+        json.endObject()
+        return DatasetPoolState(
+            requireNotNull(uid?.takeIf(String::isNotBlank)) { "卡池状态缺少 UID" },
+            requireNotNull(poolType?.takeIf(String::isNotBlank)) { "卡池状态缺少类型" },
+            complete,
+        )
+    }
+
+    private fun nextDatasetString(json: JsonReader, fallback: String): String =
+        if (json.peek() == JsonToken.NULL) {
+            json.nextNull()
+            fallback
+        } else {
+            json.nextString()
+        }
+
+    private fun ensureDatasetAccount(db: SQLiteDatabase, game: GameKind, uid: String) {
+        upsertAccount(db, GachaAccount(game, uid, "", 8, "zh-cn", 0L))
+    }
+
     private fun upsertAccount(db: SQLiteDatabase, account: GachaAccount) {
         db.insertWithOnConflict(
             "accounts",
@@ -299,14 +547,24 @@ internal class GachaStore(context: Context) : SQLiteOpenHelper(
     }
 
     private fun markHistoryComplete(db: SQLiteDatabase, account: GachaAccount, poolType: String) {
+        writePoolSyncState(db, account.game, account.uid, poolType, true)
+    }
+
+    private fun writePoolSyncState(
+        db: SQLiteDatabase,
+        game: GameKind,
+        uid: String,
+        poolType: String,
+        complete: Boolean,
+    ) {
         db.insertWithOnConflict(
             "pool_sync_state",
             null,
             ContentValues().apply {
-                put("game", account.game.code)
-                put("uid", account.uid)
+                put("game", game.code)
+                put("uid", uid)
                 put("pool_type", poolType)
-                put("history_complete", 1)
+                put("history_complete", if (complete) 1 else 0)
             },
             SQLiteDatabase.CONFLICT_REPLACE,
         )
