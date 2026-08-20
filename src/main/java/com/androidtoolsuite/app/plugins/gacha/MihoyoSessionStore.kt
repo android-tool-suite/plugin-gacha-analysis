@@ -35,7 +35,9 @@ internal class MihoyoSessionStore(context: Context) {
     }
 
     fun clear() {
-        preferences.edit().remove(KEY_SESSION).apply()
+        check(preferences.edit().remove(KEY_SESSION).commit()) { "无法删除米游社会话" }
+        val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+        if (keyStore.containsAlias(KEY_ALIAS)) keyStore.deleteEntry(KEY_ALIAS)
     }
 
     private fun encrypt(plainText: String): String {

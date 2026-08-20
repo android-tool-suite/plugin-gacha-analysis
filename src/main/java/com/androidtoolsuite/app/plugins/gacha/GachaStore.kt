@@ -184,6 +184,21 @@ internal class GachaStore(context: Context) : SQLiteOpenHelper(
         }
     }
 
+    fun deleteGame(game: GameKind) {
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            val args = arrayOf(game.code)
+            db.delete("pool_sync_state", "game = ?", args)
+            db.delete("records", "game = ?", args)
+            db.delete("accounts", "game = ?", args)
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+        check(accounts().none { it.game == game }) { "抽卡账号删除校验失败" }
+    }
+
     /** Opens the v1 database read-only so Bridge export can never trigger a schema upgrade. */
     fun exportLegacyDatasetReadOnly(context: Context, game: GameKind, output: OutputStream) {
         val databaseFile = context.getDatabasePath(DATABASE_NAME)
@@ -271,6 +286,7 @@ internal class GachaStore(context: Context) : SQLiteOpenHelper(
         input: InputStream,
         expectedGame: GameKind,
         expectedFormatVersion: Int,
+        replaceExisting: Boolean = false,
     ): GachaDatasetIntegrity {
         var formatVersion = 0
         var game: GameKind? = null
@@ -280,6 +296,12 @@ internal class GachaStore(context: Context) : SQLiteOpenHelper(
         val db = writableDatabase
         db.beginTransaction()
         val integrity = try {
+            if (replaceExisting) {
+                val args = arrayOf(expectedGame.code)
+                db.delete("records", "game = ?", args)
+                db.delete("pool_sync_state", "game = ?", args)
+                db.delete("accounts", "game = ?", args)
+            }
             val json = JsonReader(InputStreamReader(input, Charsets.UTF_8))
             json.beginObject()
             while (json.hasNext()) {

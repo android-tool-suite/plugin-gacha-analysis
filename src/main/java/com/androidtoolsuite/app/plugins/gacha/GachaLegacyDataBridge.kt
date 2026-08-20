@@ -24,7 +24,7 @@ internal class GachaLegacyDataBridge : LegacyDataBridge {
                     .toString().toByteArray().size.toLong(),
                 1,
                 false,
-                DatasetRestoreMode.REPLACE,
+                listOf(DatasetRestoreMode.REPLACE, DatasetRestoreMode.MERGE),
             ),
         )
         if (database.isFile) {
@@ -35,7 +35,7 @@ internal class GachaLegacyDataBridge : LegacyDataBridge {
                 databaseSize / 2,
                 1,
                 false,
-                DatasetRestoreMode.MERGE,
+                listOf(DatasetRestoreMode.REPLACE, DatasetRestoreMode.MERGE),
             )
             result += LegacyDatasetDescriptor(
                 "starrail-records",
@@ -44,7 +44,7 @@ internal class GachaLegacyDataBridge : LegacyDataBridge {
                 databaseSize / 2,
                 1,
                 false,
-                DatasetRestoreMode.MERGE,
+                listOf(DatasetRestoreMode.REPLACE, DatasetRestoreMode.MERGE),
             )
         }
         if (MihoyoSessionStore(activity).hasSession()) {
@@ -95,19 +95,45 @@ internal class GachaLegacyDataBridge : LegacyDataBridge {
     override fun supportsImport(datasetId: String, dataFormatVersion: Int): Boolean =
         dataFormatVersion == 1 && datasetId in SUPPORTED_IMPORTS
 
+    override fun hasData(activity: Activity, datasetId: String): Boolean = when (datasetId) {
+        "gacha-settings" -> activity.getSharedPreferences(PREFS_NAME, Activity.MODE_PRIVATE).all.isNotEmpty()
+        "genshin-records" -> GachaStore(activity).use { store ->
+            store.accounts().any { it.game == GameKind.GENSHIN }
+        }
+        "starrail-records" -> GachaStore(activity).use { store ->
+            store.accounts().any { it.game == GameKind.STAR_RAIL }
+        }
+        "mihoyo-session" -> MihoyoSessionStore(activity).hasSession()
+        else -> error("未知 Dataset：$datasetId")
+    }
+
+    override fun supportsRestoreMode(
+        datasetId: String,
+        dataFormatVersion: Int,
+        mode: DatasetRestoreMode,
+    ): Boolean = supportsImport(datasetId, dataFormatVersion) && when (datasetId) {
+        "gacha-settings", "genshin-records", "starrail-records" ->
+            mode == DatasetRestoreMode.REPLACE || mode == DatasetRestoreMode.MERGE
+        "mihoyo-session" -> mode == DatasetRestoreMode.REPLACE
+        else -> false
+    }
+
     override fun importDataset(
         activity: Activity,
         datasetId: String,
         dataFormatVersion: Int,
+        restoreMode: DatasetRestoreMode,
         input: InputStream,
     ) {
         require(supportsImport(datasetId, dataFormatVersion)) { "不支持的抽卡分析 Dataset" }
+        require(supportsRestoreMode(datasetId, dataFormatVersion, restoreMode)) { "不支持的恢复方式" }
         when (datasetId) {
             "gacha-settings" -> {
                 val expected = restorePreferences(
                     activity.getSharedPreferences(PREFS_NAME, Activity.MODE_PRIVATE),
                     input,
                     dataFormatVersion,
+                    restoreMode,
                 )
                 check(
                     restoredPreferencesMatch(
@@ -119,7 +145,12 @@ internal class GachaLegacyDataBridge : LegacyDataBridge {
             "genshin-records", "starrail-records" -> {
                 val game = if (datasetId == "genshin-records") GameKind.GENSHIN else GameKind.STAR_RAIL
                 GachaStore(activity).use { store ->
-                    val expected = store.importLegacyDataset(input, game, dataFormatVersion)
+                    val expected = store.importLegacyDataset(
+                        input,
+                        game,
+                        dataFormatVersion,
+                        replaceExisting = restoreMode == DatasetRestoreMode.REPLACE,
+                    )
                     store.validateLegacyDataset(expected)
                 }
             }
@@ -136,16 +167,42 @@ internal class GachaLegacyDataBridge : LegacyDataBridge {
         }
     }
 
+    override fun supportsDelete(datasetId: String): Boolean = datasetId in SUPPORTED_IMPORTS
+
+    override fun deleteDataset(activity: Activity, datasetId: String) {
+        require(supportsDelete(datasetId)) { "不支持删除的抽卡分析 Dataset" }
+        when (datasetId) {
+            "gacha-settings" -> {
+                val preferences = activity.getSharedPreferences(PREFS_NAME, Activity.MODE_PRIVATE)
+                check(preferences.edit().clear().commit()) { "无法删除抽卡分析设置" }
+                check(preferences.all.isEmpty()) { "抽卡分析设置删除校验失败" }
+            }
+            "genshin-records" -> GachaStore(activity).use { it.deleteGame(GameKind.GENSHIN) }
+            "starrail-records" -> GachaStore(activity).use { it.deleteGame(GameKind.STAR_RAIL) }
+            "mihoyo-session" -> {
+                val store = MihoyoSessionStore(activity)
+                store.clear()
+                check(!store.hasSession()) { "米游社会话删除校验失败" }
+            }
+        }
+    }
+
     private fun restorePreferences(
         preferences: SharedPreferences,
         input: InputStream,
         dataFormatVersion: Int,
+        restoreMode: DatasetRestoreMode,
     ): Map<String, Any> {
         val root = JSONObject(input.reader(Charsets.UTF_8).readText())
         require(root.optInt("formatVersion", 0) == dataFormatVersion) { "抽卡设置格式版本不一致" }
         val data = root.getJSONObject("preferences")
-        val editor = preferences.edit().clear()
+        val editor = preferences.edit()
         val expected = linkedMapOf<String, Any>()
+        if (restoreMode == DatasetRestoreMode.MERGE) {
+            preferences.all.forEach { (key, value) -> if (value != null) expected[key] = value }
+        } else {
+            editor.clear()
+        }
         val keys = data.keys()
         while (keys.hasNext()) {
             val key = keys.next()
