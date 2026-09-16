@@ -1,0 +1,22 @@
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+globalThis.window=globalThis;
+for(const file of ['model','network']) (0,eval)(readFileSync(new URL(`../web/${file}.js`,import.meta.url),'utf8'));
+const genshin='https://public-operation-hk4e.mihoyo.com/gacha_info/api/getGachaLog?authkey=fixture-genshin&game_biz=hk4e_cn';
+const starrail='https://public-operation-hkrpg.mihoyo.com/common/gacha_record/api/getGachaLog?authkey=fixture-starrail&game_biz=hkrpg_cn';
+assert.equal(gachaNetwork.extractLatestLink([genshin,starrail],'hk4e').parameters.authkey,'fixture-genshin');
+assert.equal(gachaNetwork.extractLatestLink([`unrelated https://example.test/health then ${starrail}`],'hkrpg').parameters.authkey,'fixture-starrail');
+assert.equal(gachaNetwork.extractLatestLink([starrail,starrail.replace('fixture-starrail','newer-fixture')],'hkrpg').parameters.authkey,'newer-fixture');
+assert.equal(gachaNetwork.extractLatestLink([starrail.replaceAll('/','\\/').replaceAll('&','\\u0026')],'hkrpg').game,'hkrpg');
+assert.equal(gachaNetwork.extractLatestLink(['https://webstatic.mihoyo.com/hk4e/gacha/index.html#/log?authkey=fragment-fixture&game_biz=hk4e_cn'],'hk4e').parameters.authkey,'fragment-fixture');
+assert.equal(gachaNetwork.extractLatestLink([`https://example.test/open?url=${encodeURIComponent(starrail)}`],'hkrpg').game,'hkrpg');
+assert.equal(gachaNetwork.extractLatestLink(['https://example.test/health'],'hk4e'),null);
+globalThis.ats={call:async(method,payload)=>{
+  assert.equal(method,'system.logs.search');
+  assert.deepEqual(payload.terms,['auth_appid=webview_gacha','authkey=']);
+  assert.equal(payload.matchMode,'any');
+  return{lines:[genshin]};
+}};
+assert.equal((await gachaNetwork.fromSystemLogs('hk4e')).parameters.authkey,'fixture-genshin');
+await assert.rejects(gachaNetwork.fromSystemLogs('hkrpg'),/没有找到完整链接/);
+console.log('Scoped log retrieval: any-term, newest matching game, multiple/escaped/fragment URLs OK');

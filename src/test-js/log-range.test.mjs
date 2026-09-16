@@ -1,0 +1,15 @@
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+globalThis.window=globalThis;
+for(const file of ['model','network']) (0,eval)(readFileSync(new URL(`../web/${file}.js`,import.meta.url),'utf8'));
+const line='https://public-operation-hkrpg.mihoyo.com/common/gacha_record/api/getGachaLog?authkey=range-fixture&game_biz=hkrpg_cn';
+let seen,echo=true;
+globalThis.ats={call:async(method,payload)=>{seen=payload;return{lines:[line],...(echo?{lookbackMinutes:payload.lookbackMinutes}:{})};}};
+assert.equal((await gachaNetwork.fromSystemLogs('hkrpg',30)).game,'hkrpg');
+assert.equal(seen.lookbackMinutes,30);
+await gachaNetwork.fromSystemLogs('hkrpg');assert.equal(seen.lookbackMinutes,0);
+for(const invalid of [-1,1.5,10081,'30'])await assert.rejects(gachaNetwork.fromSystemLogs('hkrpg',invalid),/时间范围无效/);
+echo=false;
+await assert.rejects(gachaNetwork.fromSystemLogs('hkrpg',5),/不支持时间筛选/);
+assert.equal((await gachaNetwork.fromSystemLogs('hkrpg',0)).game,'hkrpg');
+console.log('Log time ranges: requested range, validation and old-provider receipt check OK');

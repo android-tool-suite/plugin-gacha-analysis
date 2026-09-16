@@ -1,0 +1,14 @@
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+globalThis.window=globalThis;
+(0,eval)(readFileSync(new URL('../web/tab-pager.js',import.meta.url),'utf8'));
+const target=TabPagerMotion.targetIndex;
+assert.equal(target(1,4,400,-119,0),1,'short slow drag returns');
+assert.equal(target(1,4,400,-121,0),2,'30 percent left drag advances');
+assert.equal(target(1,4,400,121,0),0,'right drag returns to previous tab');
+assert.equal(target(1,4,400,-40,-.6),2,'short decisive fling advances');
+assert.equal(target(1,4,400,-8,-2),1,'tiny tap motion does not advance');
+assert.equal(target(0,4,400,260,1),0,'first tab has no wraparound');
+assert.equal(target(3,4,400,-260,-1),3,'last tab has no wraparound');
+assert.equal(target(1,4,400,-900,-1),2,'one gesture advances at most one page');
+console.log('Tab pager threshold, fling, short-drag return and edge bounds OK');

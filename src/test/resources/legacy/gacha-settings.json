@@ -1,0 +1,10 @@
+{
+  "formatVersion": 1,
+  "preferences": {
+    "selected_account_key": { "type": "string", "value": "hk4e:100000001" },
+    "selected_pool_type": { "type": "string", "value": "301" },
+    "selected_rarity": { "type": "int", "value": 5 },
+    "starrail_custom_loss_names": { "type": "stringSet", "value": ["测试常驻角色"] },
+    "banner_history_sources": { "type": "stringSet", "value": ["LOCAL_RULES", "RECORD_FIELD"] }
+  }
+}

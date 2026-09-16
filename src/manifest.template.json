@@ -1,0 +1,75 @@
+{
+  "$schema": "https://android-tool-suite.test/contracts/manifest-v3.schema.json",
+  "format": "ats-plugin",
+  "formatVersion": 3,
+  "plugin": {
+    "id": "gacha_analysis",
+    "title": "跃迁与祈愿分析",
+    "description": "获取并本地分析原神祈愿与星穹铁道跃迁记录，支持 UIGF 导入、导出和合并。",
+    "version": "@VERSION_NAME@",
+    "versionCode": @VERSION_CODE@,
+    "minHostVersionCode": @MIN_HOST_VERSION_CODE@,
+    "minAndroidApi": 26,
+    "publisher": "android_tool_suite",
+    "kind": "tool"
+  },
+  "platforms": ["android"],
+  "runtime": {
+    "ui": [{ "id": "main", "type": "declarative", "entry": "ui/main.json" }],
+    "background": [{
+      "id": "summary-worker", "type": "javascript-worker", "entry": "workers/summary.js",
+      "required": true, "timeoutMs": 15000, "maxHeapBytes": 16777216
+    }],
+    "providers": []
+  },
+  "requires": {
+    "plugins": [],
+    "capabilities": [
+      { "id": "app", "version": "^1.0.0", "optional": false, "scopes": {} },
+      { "id": "storage", "version": "^1.0.0", "optional": false, "scopes": {} },
+      { "id": "clipboard", "version": "^1.0.0", "optional": false, "scopes": {} },
+      { "id": "file.import", "version": "^1.0.0", "optional": false, "scopes": { "mimeTypes": ["application/json", "text/plain"], "maxBytes": 33554432 } },
+      { "id": "file.export", "version": "^1.0.0", "optional": false, "scopes": { "mimeTypes": ["application/json"], "maxBytes": 33554432 } },
+      { "id": "scheduler", "version": "^1.0.0", "optional": false, "scopes": {} },
+      {
+        "id": "network.request", "version": "^1.0.0", "optional": false,
+        "scopes": {
+          "hosts": [
+            "public-operation-hk4e.mihoyo.com", "public-operation-hk4e-sg.hoyoverse.com",
+            "public-operation-hkrpg.mihoyo.com", "public-operation-hkrpg-sg.hoyoverse.com",
+            "api-takumi.mihoyo.com", "api-takumi.miyoushe.com", "passport-api.mihoyo.com"
+          ],
+          "methods": ["GET", "POST"], "headers": ["cookie"], "maxResponseBytes": 8388608
+        }
+      },
+      {
+        "id": "system.logs", "version": "^1.0.0", "optional": true,
+        "scopes": { "terms": ["auth_appid=webview_gacha", "authkey="], "maxLines": 100 }
+      },
+      { "id": "gacha.summary", "version": "^1.0.0", "optional": false, "scopes": {} }
+    ]
+  },
+  "provides": { "capabilities": [{
+    "id": "gacha.summary", "version": "1.0.0", "workerEntry": "summary-worker",
+    "methods": ["gacha.summary.get"]
+  }] },
+  "contributes": {
+    "tools": [{ "id": "main", "uiEntry": "main" }],
+    "homeWidgets": [{
+      "id": "summary", "title": "抽卡记录", "template": "metric",
+      "dataSource": "gacha.summary.get", "sizes": ["2x2", "4x2"]
+    }]
+  },
+  "datasets": [
+    { "id": "gacha-settings", "title": "账号选择与分析设置", "category": "settings", "formatVersion": 1, "sensitive": false, "mediaType": "application/json", "validator": "json", "maxBytes": 1048576, "restoreModes": ["replace"], "dependsOn": [] },
+    { "id": "genshin-records", "title": "原神祈愿记录", "category": "data", "formatVersion": 1, "sensitive": false, "mediaType": "application/json", "validator": "json", "maxBytes": 268435456, "restoreModes": ["replace"], "dependsOn": [] },
+    { "id": "starrail-records", "title": "星穹铁道跃迁记录", "category": "data", "formatVersion": 1, "sensitive": false, "mediaType": "application/json", "validator": "json", "maxBytes": 268435456, "restoreModes": ["replace"], "dependsOn": [] },
+    { "id": "mihoyo-session", "title": "米游社会话", "category": "secret", "formatVersion": 1, "sensitive": true, "mediaType": "application/json", "validator": "json", "maxBytes": 1048576, "restoreModes": ["replace"], "dependsOn": [] }
+  ],
+  "tasks": [{
+    "id": "refresh-summary", "backgroundEntry": "summary-worker",
+    "triggers": [{ "type": "app-foreground" }],
+    "constraints": { "network": "none", "batteryNotLow": true, "storageNotLow": true },
+    "concurrency": { "policy": "replace" }, "retry": { "maxAttempts": 1, "initialBackoffMs": 10000 }
+  }]
+}

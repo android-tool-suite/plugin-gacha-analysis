@@ -1,0 +1,17 @@
+{
+  "pluginId": "gacha_analysis",
+  "sourceFormatVersion": 2,
+  "datasets": [
+    { "id": "gacha-settings", "formatVersion": 1, "category": "settings", "sensitive": false },
+    { "id": "genshin-records", "formatVersion": 1, "category": "data", "sensitive": false },
+    { "id": "starrail-records", "formatVersion": 1, "category": "data", "sensitive": false },
+    { "id": "mihoyo-session", "formatVersion": 1, "category": "secret", "sensitive": true }
+  ],
+  "invariants": [
+    "record-key-is-game-uid-normalized-pool-id",
+    "merge-deduplicates-by-record-id-within-game-uid-and-normalized-pool",
+    "delete-one-game-does-not-change-the-other-game",
+    "failed-dataset-write-does-not-switch-generation"
+  ],
+  "interchange": ["UIGF v4.2", "UIGF v3 import", "SRGF v1 import"]
+}

@@ -28,7 +28,7 @@ finally {
 }
 
 $plugin = $manifest.plugin
-if ($manifest.formatVersion -ne '2') { throw 'Release 插件必须使用 formatVersion 2' }
+if ([int]$manifest.formatVersion -ne 3) { throw 'Release 插件必须使用 formatVersion 3' }
 $compatibilityPath = Join-Path $repositoryRoot 'data-compatibility.json'
 if (-not (Test-Path -LiteralPath $compatibilityPath -PathType Leaf)) {
     throw '缺少 data-compatibility.json'
@@ -38,7 +38,7 @@ $dataFormatVersion = [int]$compatibility.dataFormatVersion
 $minReadableDataFormatVersion = [int]$compatibility.minReadableDataFormatVersion
 $maxReadableDataFormatVersion = [int]$compatibility.maxReadableDataFormatVersion
 if ($compatibility.schemaVersion -ne 1 -or
-    $minReadableDataFormatVersion -lt 0 -or
+    $minReadableDataFormatVersion -le 0 -or
     $minReadableDataFormatVersion -gt $dataFormatVersion -or
     $dataFormatVersion -gt $maxReadableDataFormatVersion) {
     throw 'data-compatibility.json 中的数据兼容范围无效'
@@ -73,13 +73,14 @@ $metadata = [ordered]@{
     id = $plugin.id
     title = $plugin.title
     description = $plugin.description
-    author = $plugin.author
+    author = $plugin.publisher
     repositoryUrl = $repositoryUrl
     versionName = $plugin.version
     versionCode = [int]$plugin.versionCode
     minHostVersionCode = [int]$plugin.minHostVersionCode
-    sdkVersion = $plugin.sdkVersion
-    dependencies = @($manifest.dependencies)
+    minAndroidApi = if ($null -eq $plugin.minAndroidApi) { 24 } else { [int]$plugin.minAndroidApi }
+    sdkVersion = ''
+    dependencies = @($manifest.requires.plugins | ForEach-Object { "$($_.id)@$($_.version)" })
     dataCompatibility = [ordered]@{
         schemaVersion = 1
         dataFormatVersion = $dataFormatVersion
