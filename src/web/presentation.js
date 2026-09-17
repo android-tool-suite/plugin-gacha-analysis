@@ -1,4 +1,11 @@
 (() => {
+  function importPlan(datasets, bundles) {
+    return ['hk4e','hkrpg'].filter(game => bundles.some(bundle => bundle.account.game === game)).map(game => {
+      const candidate = JSON.parse(JSON.stringify(datasets[game]));
+      const result = gachaModel.mergeDataset(candidate, bundles);
+      return {game, candidate, ...result};
+    });
+  }
   const sourceKey = account => `banner-history-sources:${account.game}:${account.uid}`;
   const lossKey = account => `star-rail-loss-names:${account.uid}`;
   const preference = (settings, key, fallback) => settings.preferences?.[key]?.value ?? fallback;
@@ -20,5 +27,5 @@
       (!rarity || Number(item.rank_type) === rarity)
     ).sort((a, b) => -gachaModel.order(a, b));
   }
-  window.gachaPresentation = {sourceKey, lossKey, selection, analysisOptions, records};
+  window.gachaPresentation = {importPlan, sourceKey, lossKey, selection, analysisOptions, records};
 })();

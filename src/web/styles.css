@@ -25,6 +25,8 @@ main>header{min-height:44px}main>header p{font-size:var(--ats-type-body-small-si
 #tabs{gap:var(--ats-space-xs);border-bottom:1px solid var(--ats-outline-variant);padding:0;scrollbar-width:none}
 #tabs button{border:0;border-bottom:3px solid transparent;border-radius:0;min-height:48px;padding:var(--ats-space-md);background:transparent;color:var(--ats-on-surface-variant)}
 #tabs button.active{border-bottom-color:var(--ats-primary);color:var(--ats-primary);background:transparent}
+#tabs{display:flex;width:100%;gap:0;overflow:visible}
+#tabs>button{flex:1 1 0;min-width:0;padding-inline:var(--ats-space-xs);text-align:center}
 .card{padding:var(--ats-space-lg) var(--ats-space-xl);gap:var(--ats-space-sm)}
 .metric-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--ats-space-sm);border-top:1px solid var(--ats-outline-variant);padding-top:var(--ats-space-md)}
 .metric-grid>div{display:grid;gap:var(--ats-space-xs);text-align:center}.metric-grid strong{font-size:var(--ats-type-title-medium-size)}
@@ -74,6 +76,17 @@ main.pager-layout>header,main.pager-layout>#accounts,main.pager-layout>#tabs,mai
 .snackbar,.snackbar.success,.snackbar.danger{background:var(--ats-on-surface);color:var(--ats-surface);border:0;box-shadow:0 3px 12px #0002}
 
 .tab-page[aria-hidden="true"]{pointer-events:none}
+.acquire-sources{display:flex;gap:var(--ats-space-xs);padding:var(--ats-space-xs);border-radius:var(--ats-inner-radius);background:var(--ats-surface-container)}
+.acquire-sources button{flex:1;min-width:0;min-height:44px;padding:var(--ats-space-sm) var(--ats-space-xs);border:0;background:transparent;color:var(--ats-on-surface-variant)}
+.acquire-sources button[aria-pressed=true]{background:var(--ats-surface);color:var(--ats-primary)}
+.luck-details summary{font-size:var(--ats-type-body-small-size);font-weight:var(--ats-type-body-small-weight);color:var(--ats-on-surface-variant)}
+.luck-details p,.data-cleanup p{margin-top:var(--ats-space-sm)}.data-cleanup .actions{margin-top:var(--ats-space-md)}
+.pool-strip{scroll-snap-type:x proximity}.pool-summary{scroll-snap-align:start}
+.pool-summary:focus-visible,.account-chip:focus-visible{outline:2px solid var(--ats-primary);outline-offset:-2px}
+.link-actions{grid-template-columns:minmax(0,1fr)}
+dialog{width:min(560px,calc(100% - 32px));max-height:calc(100% - 32px);overflow:auto;border:0;border-radius:var(--ats-dialog-radius);padding:var(--ats-space-xl);background:var(--ats-surface);color:var(--ats-on-surface)}
+dialog::backdrop{background:#0008}dialog>p,dialog>.actions{margin-top:var(--ats-space-lg)}
+.import-game{padding:var(--ats-space-md) 0;border-bottom:1px solid var(--ats-outline-variant)}
 
 .link-heading{display:grid;gap:var(--ats-space-xs)}.link-step{font-size:var(--ats-type-label-medium-size);line-height:var(--ats-type-label-medium-line);color:var(--ats-primary)}
 .acquire-link textarea{min-height:76px}.link-secondary{display:flex;justify-content:flex-end;gap:var(--ats-space-xs);flex-wrap:wrap}.link-secondary button{padding:var(--ats-space-sm)}
