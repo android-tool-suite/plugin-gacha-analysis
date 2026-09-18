@@ -6,7 +6,7 @@
   }
   window.TabPagerMotion = {targetIndex};
 
-  window.createTabPager = ({host, tabs, pages, initialPage, renderPage, onSelect, isBusy}) => {
+  window.createTabPager = ({host, tabs, pages, initialPage, renderPage, onSelect, isBusy, preloadNeighbors = true}) => {
     const main = host.closest('main');
     document.documentElement.classList.add('has-tab-pager');document.body.classList.add('has-tab-pager');
     main.classList.add('pager-layout');
@@ -16,15 +16,7 @@
     const roots = [], panes = [], valid = pages.map(() => false), positions = pages.map(() => 0);
     let active = Math.max(0, pages.indexOf(initialPage)), gesture = null, animation = 0, idle = 0, painting = 0;
     let suppressClickUntil = 0, moving = false, pendingRefresh = false;
-    let stateReady = false, saveTimer = 0;
-    const savePosition = () => {
-      if (!stateReady || !window.ats) return;
-      clearTimeout(saveTimer);
-      saveTimer = setTimeout(() => {
-        window.ats.call('storage.kv.set', {key:'ui:pager', value:{version:1, page:pages[active], positions}})
-          .catch(() => console.warn('Page position could not be saved'));
-      }, 150);
-    };
+    let initialized = false, contentDeferred = false, jump = null;
     const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
     for (const [index, page] of pages.entries()) {
       const pane = document.createElement('section');
@@ -32,7 +24,7 @@
       pane.dataset.pagerIndex = String(index);pane.setAttribute('role', 'tabpanel');pane.setAttribute('aria-label', page);
       const root = document.createElement('div');root.className = 'page-content';
       pane.appendChild(root);track.appendChild(pane);panes.push(pane);roots.push(root);
-      pane.addEventListener('scroll', () => {if (valid[index]) { positions[index] = pane.scrollTop; savePosition(); }}, {passive:true});
+      pane.addEventListener('scroll', () => {if (valid[index]) positions[index] = pane.scrollTop;}, {passive:true});
     }
     host.replaceChildren(track);
     const width = () => Math.max(1, track.getBoundingClientRect().width);
@@ -42,7 +34,8 @@
       const items = buttons();if (!items.length) return;
       let indicator = tabs.querySelector('.tab-pager-indicator');
       if (!indicator) {indicator = document.createElement('span');indicator.className = 'tab-pager-indicator';indicator.setAttribute('aria-hidden','true');tabs.appendChild(indicator);}
-      const position = clamp(track.scrollLeft / width(), 0, pages.length - 1), left = Math.floor(position), right = Math.min(left + 1, pages.length - 1), fraction = position - left;
+      const physical = track.scrollLeft / width();
+      const position = jump ? jump.from + (jump.to-jump.from)*clamp((physical-jump.from)/jump.direction,0,1) : clamp(physical,0,pages.length-1), left = Math.floor(position), right = Math.min(left + 1, pages.length - 1), fraction = position - left;
       const a = items[left], b = items[right];
       if (a && b) {
         indicator.style.width = `${a.offsetWidth + (b.offsetWidth - a.offsetWidth) * fraction}px`;
@@ -63,11 +56,13 @@
     }
     function neighbors() {
       cancelAnimationFrame(idle);
-      idle = requestAnimationFrame(() => {mount(active - 1);mount(active + 1);});
+      idle = requestAnimationFrame(() => {if (!contentDeferred && preloadNeighbors) {mount(active - 1);mount(active + 1);}});
     }
+    function resetJump(){if(!jump)return;panes[jump.to].style.transform='';panes.forEach(pane=>{pane.style.visibility='';});jump=null;}
     function settle(index, focus = false) {
+      resetJump();
       moving = false;track.classList.remove('dragging');
-      const changed = active !== index;active = index;savePosition();track.scrollLeft = index * width();
+      const changed = active !== index;active = index;track.scrollLeft = index * width();
       host.dataset.activePage = pages[index];host.dataset.moving = 'false';
       panes.forEach((pane,i) => {
         pane.classList.toggle('is-active', i === index);pane.inert = i !== index;pane.setAttribute('aria-hidden',String(i !== index));
@@ -86,8 +81,16 @@
       const index = typeof page === 'number' ? page : pages.indexOf(page);
       if (index < 0 || index >= pages.length || (isBusy() && !finishGesture)) return;
       cancelAnimationFrame(animation);gesture = null;
-      for (let i = Math.min(active,index); i <= Math.max(active,index); i++) mount(i);
-      const from = track.scrollLeft, to = index * width(), distance = to - from;
+      if(jump){resetJump();track.scrollLeft=active*width();}
+      mount(active);mount(index);
+      // A direct jump animates its two endpoints next to each other, without mounting intervening business pages.
+      const longJump=Math.abs(index-active)>1&&!reducedMotion.matches;
+      if(longJump){
+        const direction=Math.sign(index-active);jump={from:active,to:index,direction};
+        panes[index].style.transform=`translateX(${(active+direction-index)*width()}px)`;
+        panes.forEach((pane,i)=>{if(i!==active&&i!==index)pane.style.visibility='hidden';});
+      }
+      const from = track.scrollLeft, to = (jump?active+jump.direction:index) * width(), distance = to - from;
       if (Math.abs(distance) < 1 || reducedMotion.matches) {settle(index,focus);return;}
       moving = true;host.dataset.moving = 'true';
       const duration = Math.min(520,240 + Math.abs(distance / width()) * 70), start = performance.now();
@@ -145,7 +148,7 @@
       if (height > 0) {
         document.documentElement.style.height = `${height}px`;document.body.style.height = `${height}px`;main.style.height = `${height}px`;
       }
-      cancelAnimationFrame(animation);gesture = null;moving = false;host.dataset.moving = 'false';track.classList.remove('dragging');track.scrollLeft = active * width();paint();
+      cancelAnimationFrame(animation);resetJump();gesture = null;moving = false;host.dataset.moving = 'false';track.classList.remove('dragging');track.scrollLeft = active * width();paint();
     }
     window.addEventListener('resize',resize);window.visualViewport?.addEventListener('resize',resize);
     requestAnimationFrame(resize);
@@ -153,24 +156,18 @@
     return {
       root:page=>roots[pages.indexOf(page)],
       goTo,
-      async restore() {
-        if (stateReady) return;
-        try {
-          const saved = await window.ats.call('storage.kv.get', {key:'ui:pager'});
-          const value = saved.value;
-          if (saved.found && value?.version === 1 && pages.includes(value.page) && Array.isArray(value.positions)) {
-            for (let i=0;i<positions.length;i++) positions[i] = Number.isFinite(value.positions[i]) ? Math.max(0,value.positions[i]) : 0;
-            valid.fill(false);mount(pages.indexOf(value.page));settle(pages.indexOf(value.page));
-            track.scrollLeft = active * width();
-          }
-        } catch (_) { console.warn('Page position could not be restored'); }
-        finally { stateReady = true; }
+      initialize({deferContent = false} = {}) {
+        if (initialized) return;
+        contentDeferred = deferContent;
+        // Navigation belongs to this live page, not persistent plugin settings.
+        initialized = true;
       },
       syncTabs:paint,
       refresh() {
         if (gesture?.horizontal || moving) {pendingRefresh = true;return;}
         cancelAnimationFrame(animation);gesture = null;moving = false;
-        positions[active] = panes[active].scrollTop;valid.fill(false);mount(active);settle(active);
+        if (!contentDeferred) positions[active] = panes[active].scrollTop;
+        contentDeferred = false;valid.fill(false);mount(active);settle(active);
       },
     };
   };
