@@ -16,6 +16,15 @@
     const roots = [], panes = [], valid = pages.map(() => false), positions = pages.map(() => 0);
     let active = Math.max(0, pages.indexOf(initialPage)), gesture = null, animation = 0, idle = 0, painting = 0;
     let suppressClickUntil = 0, moving = false, pendingRefresh = false;
+    let stateReady = false, saveTimer = 0;
+    const savePosition = () => {
+      if (!stateReady || !window.ats) return;
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(() => {
+        window.ats.call('storage.kv.set', {key:'ui:pager', value:{version:1, page:pages[active], positions}})
+          .catch(() => console.warn('Page position could not be saved'));
+      }, 150);
+    };
     const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
     for (const [index, page] of pages.entries()) {
       const pane = document.createElement('section');
@@ -23,7 +32,7 @@
       pane.dataset.pagerIndex = String(index);pane.setAttribute('role', 'tabpanel');pane.setAttribute('aria-label', page);
       const root = document.createElement('div');root.className = 'page-content';
       pane.appendChild(root);track.appendChild(pane);panes.push(pane);roots.push(root);
-      pane.addEventListener('scroll', () => {if (valid[index]) positions[index] = pane.scrollTop;}, {passive:true});
+      pane.addEventListener('scroll', () => {if (valid[index]) { positions[index] = pane.scrollTop; savePosition(); }}, {passive:true});
     }
     host.replaceChildren(track);
     const width = () => Math.max(1, track.getBoundingClientRect().width);
@@ -58,7 +67,7 @@
     }
     function settle(index, focus = false) {
       moving = false;track.classList.remove('dragging');
-      const changed = active !== index;active = index;track.scrollLeft = index * width();
+      const changed = active !== index;active = index;savePosition();track.scrollLeft = index * width();
       host.dataset.activePage = pages[index];host.dataset.moving = 'false';
       panes.forEach((pane,i) => {
         pane.classList.toggle('is-active', i === index);pane.inert = i !== index;pane.setAttribute('aria-hidden',String(i !== index));
@@ -144,6 +153,19 @@
     return {
       root:page=>roots[pages.indexOf(page)],
       goTo,
+      async restore() {
+        if (stateReady) return;
+        try {
+          const saved = await window.ats.call('storage.kv.get', {key:'ui:pager'});
+          const value = saved.value;
+          if (saved.found && value?.version === 1 && pages.includes(value.page) && Array.isArray(value.positions)) {
+            for (let i=0;i<positions.length;i++) positions[i] = Number.isFinite(value.positions[i]) ? Math.max(0,value.positions[i]) : 0;
+            valid.fill(false);mount(pages.indexOf(value.page));settle(pages.indexOf(value.page));
+            track.scrollLeft = active * width();
+          }
+        } catch (_) { console.warn('Page position could not be restored'); }
+        finally { stateReady = true; }
+      },
       syncTabs:paint,
       refresh() {
         if (gesture?.horizontal || moving) {pendingRefresh = true;return;}

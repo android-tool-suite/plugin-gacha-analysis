@@ -68,9 +68,17 @@ async function datasetStats(ats, datasetId, maxBytes) {
     await ats.call('storage.dataset.abort', {handle: opened.handle}).catch(() => {});
     throw Object.assign(new Error('Dataset exceeds worker limit'), {code: 'RESOURCE_LIMIT'});
   }
+  const key = `summary:${datasetId}`;
   const counter = createDatasetCounter();
   let offset = 0;
   try {
+    const cached = await ats.call('storage.kv.get', {key});
+    const summary = cached.value;
+    if (cached.found && summary?.sha256 === opened.sha256 && summary?.size === opened.size
+        && Number.isSafeInteger(summary.accounts) && summary.accounts >= 0
+        && Number.isSafeInteger(summary.records) && summary.records >= 0) {
+      return {accounts: summary.accounts, records: summary.records};
+    }
     while (true) {
       const part = await ats.call('storage.dataset.read', {
         handle: opened.handle,
@@ -85,6 +93,7 @@ async function datasetStats(ats, datasetId, maxBytes) {
   } finally {
     await ats.call('storage.dataset.abort', {handle: opened.handle}).catch(() => {});
   }
+  await ats.call('storage.kv.set', {key, value: {sha256: opened.sha256, size: opened.size, ...counter.counts}});
   return counter.counts;
 }
 

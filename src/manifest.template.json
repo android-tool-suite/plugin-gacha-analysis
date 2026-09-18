@@ -68,7 +68,7 @@
   ],
   "tasks": [{
     "id": "refresh-summary", "backgroundEntry": "summary-worker",
-    "triggers": [{ "type": "app-foreground" }],
+    "triggers": [{ "type": "manual" }],
     "constraints": { "network": "none", "batteryNotLow": true, "storageNotLow": true },
     "concurrency": { "policy": "replace" }, "retry": { "maxAttempts": 1, "initialBackoffMs": 10000 }
   }]
