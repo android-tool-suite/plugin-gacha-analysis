@@ -1,9 +1,6 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)]
-    [ValidateSet('release', 'debug')]
-    [string]$Channel,
-    [Parameter(Mandatory)]
     [string]$Reference
 )
 
@@ -15,7 +12,7 @@ if ([string]::IsNullOrWhiteSpace($env:GH_TOKEN)) {
 $payload = [ordered]@{
     event_type = 'component_published'
     client_payload = [ordered]@{
-        channel = $Channel
+        channel = 'release'
         repository = $env:GITHUB_REPOSITORY
         commitSha = $env:GITHUB_SHA
         reference = $Reference

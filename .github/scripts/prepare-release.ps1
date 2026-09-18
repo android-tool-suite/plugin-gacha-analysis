@@ -4,10 +4,8 @@ param(
     [string]$ArtifactPath,
     [Parameter(Mandatory)]
     [string]$OutputDirectory,
-    [string]$ExpectedTag = '',
-    [ValidateSet('release', 'debug')]
-    [string]$Channel = 'release',
-    [string]$CommitSha = ''
+    [Parameter(Mandatory)]
+    [string]$ExpectedTag
 )
 
 $ErrorActionPreference = 'Stop'
@@ -43,16 +41,11 @@ if ($compatibility.schemaVersion -ne 1 -or
     $dataFormatVersion -gt $maxReadableDataFormatVersion) {
     throw 'data-compatibility.json 中的数据兼容范围无效'
 }
-if ($Channel -eq 'release') {
-    if ($ExpectedTag -ne "v$($plugin.version)") {
-        throw "标签 $ExpectedTag 与插件版本 $($plugin.version) 不一致"
-    }
-    if (-not (Select-String -LiteralPath (Join-Path $repositoryRoot 'CHANGELOG.md') -SimpleMatch $plugin.version -Quiet)) {
-        throw "CHANGELOG.md 缺少 $($plugin.version)"
-    }
+if ($ExpectedTag -ne "v$($plugin.version)") {
+    throw "标签 $ExpectedTag 与插件版本 $($plugin.version) 不一致"
 }
-elseif ($CommitSha -notmatch '^[0-9a-fA-F]{40}$') {
-    throw 'Debug 发布必须提供完整的 commit SHA'
+if (-not (Select-String -LiteralPath (Join-Path $repositoryRoot 'CHANGELOG.md') -SimpleMatch $plugin.version -Quiet)) {
+    throw "CHANGELOG.md 缺少 $($plugin.version)"
 }
 
 New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
@@ -69,7 +62,7 @@ $repositoryUrl = if ($env:GITHUB_REPOSITORY) {
 $metadata = [ordered]@{
     schemaVersion = 1
     type = 'plugin'
-    channel = $Channel
+    channel = 'release'
     id = $plugin.id
     title = $plugin.title
     description = $plugin.description
@@ -88,9 +81,6 @@ $metadata = [ordered]@{
         maxReadableDataFormatVersion = $maxReadableDataFormatVersion
     }
     artifactName = $targetFile.Name
-}
-if ($Channel -eq 'debug') {
-    $metadata.commitSha = $CommitSha.ToLowerInvariant()
 }
 $metadata | ConvertTo-Json -Depth 8 |
     Set-Content -LiteralPath (Join-Path $OutputDirectory 'release-metadata.json') -Encoding utf8

@@ -109,4 +109,4 @@ jobs:
           GH_TOKEN: ${{ steps.registry-app-token.outputs.token }}
         run: |
           $tag = if ('${{ github.event_name }}' -eq 'push') { '${{ github.ref_name }}' } else { '${{ inputs.tag }}' }
-          .\.github\scripts\dispatch-registry.ps1 -Channel release -Reference $tag
+          .\.github\scripts\dispatch-registry.ps1 -Reference $tag
