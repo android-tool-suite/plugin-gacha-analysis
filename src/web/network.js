@@ -98,7 +98,7 @@
     const result=await ats.call('system.logs.search',{terms:['auth_appid=webview_gacha','authkey='],matchMode:'any',maxLines:100,lookbackMinutes});
     if(lookbackMinutes>0&&result.lookbackMinutes!==lookbackMinutes)throw new Error('当前日志提供插件不支持时间筛选，请更新后再试，或选择系统保留的全部日志。');
     const link=extractLatestLink(result.lines||[],game);if(link)return link;
-    throw new Error('所选范围内没有找到完整链接。可扩大时间范围，或在游戏／云游戏 App 中重新打开抽卡历史后返回查找。');
+    throw new Error('所选范围内没有找到完整链接。可扩大时间范围，或在游戏／云游戏 App 中重新打开抽卡历史后返回查找；不支持浏览器云游戏网页版，也可改为粘贴链接。');
   }
   window.gachaNetwork={fetch,fromSystemLogs,extractLatestLink};
 })();

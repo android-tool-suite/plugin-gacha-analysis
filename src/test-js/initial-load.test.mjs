@@ -39,3 +39,13 @@ test('only a rejected read is a failure; starting a retry clears that state',asy
   await Promise.resolve();resolve(null);await retry;
   assert.equal(loader.has('hk4e'),true);assert.equal(loader.failed('hk4e'),false);
 });
+
+test('loading both games waits for the healthy game before reporting a failed one',async()=>{
+  let finishHealthy,settled=false;
+  const loader=gachaInitialLoad.createLoader(id=>id==='genshin-records'?Promise.reject(Error('corrupt')):new Promise(resolve=>{finishHealthy=resolve;}),()=>{});
+  const loading=loader.all();loading.then(()=>{settled=true;},()=>{settled=true;});
+  await new Promise(resolve=>setTimeout(resolve,0));
+  assert.equal(loader.failed('hk4e'),true);assert.equal(settled,false);
+  finishHealthy(null);await assert.rejects(loading,/corrupt/);
+  assert.equal(loader.has('hkrpg'),true);assert.equal(loader.failed('hkrpg'),false);
+});

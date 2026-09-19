@@ -55,7 +55,7 @@ main>header{min-height:44px}main>header p{font-size:var(--ats-type-body-small-si
 .acquire-options select{font-size:var(--ats-type-body-medium-size);padding:var(--ats-space-sm);min-width:0;background:var(--ats-surface-low);color:var(--ats-on-surface)}
 .ready-label{color:var(--ats-success);font-size:var(--ats-type-label-medium-size)}.text-button{background:transparent;color:var(--ats-primary);padding:var(--ats-space-sm) var(--ats-space-md)}
 .role{display:flex;align-items:center;justify-content:space-between;gap:var(--ats-space-md);border-top:1px solid var(--ats-outline-variant);padding-top:var(--ats-space-md)}.role>div{min-width:0;flex:1}.role button{flex:none}.role h3,.role p{overflow-wrap:anywhere}
-.logout-confirm{display:grid;gap:var(--ats-space-sm);border-top:1px solid var(--ats-outline-variant);padding-top:var(--ats-space-md)}.cloud-options p,.cloud-options .actions{margin-top:var(--ats-space-md)}
+.logout-confirm{display:grid;gap:var(--ats-space-sm);border-top:1px solid var(--ats-outline-variant);padding-top:var(--ats-space-md)}
 .card{grid-template-columns:minmax(0,1fr)}.card>*{min-width:0}.link-actions{align-items:center}
 @media(max-width:360px){.acquire-options{grid-template-columns:1fr}.role{flex-wrap:wrap}.role button{margin-left:auto}}
 

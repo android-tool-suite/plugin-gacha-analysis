@@ -15,7 +15,12 @@
         .finally(()=>pending.delete(game)));}
       return pending.get(game);
     }
-    return {ensure, has:game=>loaded.has(game), failed:game=>failed.has(game), all:()=>Promise.all(['hk4e','hkrpg'].map(ensure))};
+    async function all(){
+      const results=await Promise.allSettled(['hk4e','hkrpg'].map(ensure));
+      const failure=results.find(result=>result.status==='rejected');
+      if(failure)throw failure.reason;
+    }
+    return {ensure, has:game=>loaded.has(game), failed:game=>failed.has(game), all};
   }
   root.gachaInitialLoad = {preferredGame, createLoader};
 })(globalThis);
