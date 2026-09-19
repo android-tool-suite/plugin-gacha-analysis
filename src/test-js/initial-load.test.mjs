@@ -27,3 +27,15 @@ test('refresh rereads records, including missing datasets',async()=>{
   const create=()=>gachaInitialLoad.createLoader(async()=>{reads++;return null;},(_,bytes)=>assert.equal(bytes,null));
   const first=create();await first.ensure('hk4e');await first.ensure('hk4e');await create().ensure('hk4e');assert.equal(reads,2);
 });
+
+test('only a rejected read is a failure; starting a retry clears that state',async()=>{
+  let reject,resolve;
+  const loader=gachaInitialLoad.createLoader(()=>new Promise((ok,fail)=>{resolve=ok;reject=fail;}),()=>{});
+  const first=loader.ensure('hk4e');await Promise.resolve();
+  assert.equal(loader.failed('hk4e'),false);assert.equal(loader.has('hk4e'),false);
+  reject(Error('read failed'));await assert.rejects(first,/read failed/);
+  assert.equal(loader.failed('hk4e'),true);
+  const retry=loader.ensure('hk4e');assert.equal(loader.failed('hk4e'),false);
+  await Promise.resolve();resolve(null);await retry;
+  assert.equal(loader.has('hk4e'),true);assert.equal(loader.failed('hk4e'),false);
+});

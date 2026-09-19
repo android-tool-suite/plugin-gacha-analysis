@@ -93,3 +93,9 @@ dialog::backdrop{background:#0008}dialog>p,dialog>.actions{margin-top:var(--ats-
 .sync-progress{font-size:var(--ats-type-body-small-size);color:var(--ats-on-surface-variant);overflow-wrap:anywhere}
 .sync-result{background:var(--ats-surface-container);padding:var(--ats-space-md);border-radius:var(--ats-inner-radius);display:grid;gap:var(--ats-space-sm)}.sync-result>div:first-child{display:grid;gap:var(--ats-space-xs)}
 .sync-metrics{display:flex;align-items:center;gap:var(--ats-space-md);flex-wrap:wrap}.sync-metrics button{margin-left:auto}.sync-help summary{font-size:var(--ats-type-body-small-size);font-weight:var(--ats-type-body-small-weight);color:var(--ats-on-surface-variant)}.sync-help p{margin-top:var(--ats-space-sm)}
+
+/* Short reads finishing near the feedback threshold must not flash at full contrast. */
+#progress{transition:opacity 200ms ease-in}
+
+/* Publish the first account, controls and content together, without temporary copy. */
+body.initializing main > header,body.initializing #accounts,body.initializing #tabs,body.initializing #content{visibility:hidden}
