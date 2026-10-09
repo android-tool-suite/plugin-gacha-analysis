@@ -28,21 +28,21 @@ const ats = {
     throw new Error(method);
   }
 };
-const result = await globalThis.atsWorkerMain({kind: 'capability', method: 'gacha.summary.get'}, ats);
-assert.equal(result.value, 3);
-assert.equal(result.title, '2 个账号');
-assert.equal(result.detail, '原神 2 · 星铁 1');
+const result = await globalThis.atsWorkerMain({}, ats);
+assert.equal(result.records, 3);
+assert.equal(result.accounts,2);
+assert.equal(result.status,'succeeded');
 console.log('Streaming Gacha summary worker fixture: OK');
 
 assert.ok(reads > 0, 'legacy data still uses the real streaming counter');
 reads = 0;
-assert.deepEqual(await globalThis.atsWorkerMain({kind:'capability',method:'gacha.summary.get'},ats), result);
+assert.deepEqual(await globalThis.atsWorkerMain({},ats), result);
 assert.equal(reads, 0, 'unchanged records must reuse the digest-bound counts');
 bytes['genshin-records'] = Buffer.from(JSON.stringify({accounts:[{uid:'1'}],records:[{id:'4'}]}));
-const changed = await globalThis.atsWorkerMain({kind:'capability',method:'gacha.summary.get'},ats);
-assert.equal(changed.value, 2, 'restoring/replacing records invalidates cached counts');
+const changed = await globalThis.atsWorkerMain({},ats);
+assert.equal(changed.records, 2, 'restoring/replacing records invalidates cached counts');
 assert.ok(reads > 0);
 cache.get('summary:genshin-records').records = -1;
 reads=0;
-assert.equal((await globalThis.atsWorkerMain({kind:'capability',method:'gacha.summary.get'},ats)).value,2);
+assert.equal((await globalThis.atsWorkerMain({},ats)).records,2);
 assert.ok(reads > 0, 'invalid cached counts are recomputed');

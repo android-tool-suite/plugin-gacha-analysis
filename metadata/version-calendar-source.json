@@ -1,0 +1,19 @@
+{
+  "source": "https://raw.githubusercontent.com/MadeBaruna/paimon-moe/main/src/data/banners.js",
+  "repository": "MadeBaruna/paimon-moe",
+  "license": "MIT",
+  "retrievedAt": "2026-10-08",
+  "sha256": "ecc7213536c30bbe1fe0f500946222c2ee07c0c9f51f8525c6e6e8b0ee846233",
+  "generatedFile": "src/web/version-calendar.js",
+  "rangeCount": 53,
+  "derivation": "Group literal banner dates by version. End times are clipped at the next version start to avoid long-running banner overlaps. Uncovered dates and games remain unknown.",
+  "starrail": {
+    "source": "https://wiki.biligame.com/sr/版本新增内容",
+    "retrievedAt": "2026-10-09",
+    "sha256": "372ffb0f41bd6f7a6d937b49b39503184f868f529a5b156cb8cce5dcd8306e4b",
+    "rangeCount": 31,
+    "startVersion": "1.0",
+    "endVersion": "4.6",
+    "derivation": "Version release dates from the version-history table. A version boundary is the listed update day at 06:00 UTC+8, matching maintenance start; no valid pulls during maintenance. End is the next listed update boundary. Do not extrapolate after the last boundary or infer banner phases/featured characters."
+  }
+}

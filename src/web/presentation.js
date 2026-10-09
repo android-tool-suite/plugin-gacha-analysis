@@ -27,5 +27,38 @@
       (!rarity || Number(item.rank_type) === rarity)
     ).sort((a, b) => -gachaModel.order(a, b));
   }
-  window.gachaPresentation = {importPlan, sourceKey, lossKey, selection, analysisOptions, records};
+  function recordMonths(records) {
+    const counts = new Map();
+    for (const record of records) {
+      const month = String(record.time || '').slice(0, 7);
+      if (/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) counts.set(month, (counts.get(month) || 0) + 1);
+    }
+    return [...counts].sort(([left], [right]) => left.localeCompare(right)).map(([month, count]) => ({month, count}));
+  }
+  function dateGroups(records) {
+    const groups = [];
+    for (const record of records) {
+      const date = String(record.time || '').slice(0, 10) || '日期未知';
+      if (groups.at(-1)?.date !== date) groups.push({date, records: []});
+      groups.at(-1).records.push(record);
+    }
+    return groups;
+  }
+  function recordDetail(snapshot, game, identity) {
+    const record = snapshot?.records.find(item => gachaModel.recordKey(game, item) === identity);
+    if (!record) return null;
+    const type = gachaModel.poolType(game, record.uigf_gacha_type || record.gacha_type);
+    const pool = snapshot.stats.find(item => item.type === type);
+    const pull = pool?.targetPulls.find(item => gachaModel.recordKey(game, item.record) === identity);
+    return {record, pool, pull, pity: snapshot.pityByRecord[identity]};
+  }
+  function exportBundles(datasets, accounts, selectedKeys) {
+    const selected = new Set(selectedKeys);
+    return accounts.filter(account => selected.has(gachaModel.key(account))).map(account => ({
+      account,
+      records: datasets[account.game].records.filter(item => item.uid === account.uid),
+      completedPoolTypes: [],
+    }));
+  }
+  window.gachaPresentation = {importPlan, sourceKey, lossKey, selection, analysisOptions, records, recordMonths, dateGroups, recordDetail, exportBundles};
 })();

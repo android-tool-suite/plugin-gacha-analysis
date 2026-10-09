@@ -13,16 +13,19 @@ assert.equal(manifest.formatVersion, 3);
 assert.deepEqual(manifest.requires.plugins, []);
 assert.equal(manifest.runtime.providers.length, 0);
 assert.equal(manifest.runtime.ui[0].type, 'declarative');
-assert.equal(manifest.datasets.length, 4);
-assert.deepEqual(new Set(manifest.datasets.map(item => item.id)), new Set(migration.datasets.map(item => item.id)));
+assert.equal(manifest.datasets.length, 5);
+assert.deepEqual(new Set(manifest.datasets.map(item => item.id)), new Set([...migration.datasets.map(item => item.id),'record-links']));
 for (const expected of migration.datasets) {
   const actual = manifest.datasets.find(item => item.id === expected.id);
   assert.equal(actual.formatVersion, expected.formatVersion);
   assert.equal(actual.category, expected.category);
   assert.equal(actual.sensitive, expected.sensitive);
   assert.deepEqual(actual.dependsOn, []);
+  assert.ok(actual.restoreModes.includes('merge'));assert.ok(actual.mergePolicy);
 }
 assert.equal(manifest.datasets.find(item => item.id === 'mihoyo-session').sensitive, true);
+assert.equal(manifest.datasets.find(item => item.id === 'record-links').sensitive, true);
+assert.equal(manifest.datasets.find(item => item.id === 'record-links').category, 'secret');
 const logs = manifest.requires.capabilities.find(item => item.id === 'system.logs');
 assert.equal(logs.optional, true);
 assert.deepEqual(logs.scopes.terms, ['auth_appid=webview_gacha', 'authkey=']);

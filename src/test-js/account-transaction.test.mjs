@@ -10,14 +10,15 @@ for(const saveSucceeds of [true,false])test(`account switch stays consistent acr
   assert.equal(app.state.selected.uid,'2');assert.equal(app.state.snapshot,originalSnapshot);
   assert.equal(JSON.stringify(app.state.settings),originalSettings);
   app.drawPage('记录',node());
-  assert.match(get('subtitle').textContent,/当前账号 1 条记录/);
+  assert.match(get('accounts').innerHTML,/UID 2/);assert.match(get('accounts').innerHTML,/data-switch-game="hkrpg" aria-pressed="true"/);
+  assert.doesNotMatch(get('accounts').innerHTML,/UID 1/);
   assert.equal(get('record-count').textContent,'1 条匹配记录');
   if(saveSucceeds)writes[0].resolve();else writes[0].reject(Error('Cannot save settings'));
   await switching;
   app.drawPage('记录',node());
   assert.equal(app.state.selected.uid,saveSucceeds?'1':'2');
   assert.equal(get('record-count').textContent,`${saveSucceeds?2:1} 条匹配记录`);
-  assert.match(get('subtitle').textContent,saveSucceeds?/当前账号 2 条记录/:/当前账号 1 条记录/);
+  assert.match(get('accounts').innerHTML,saveSucceeds?/UID 1/:/UID 2/);
   if(saveSucceeds){
     assert.equal(writes[0].value.preferences['selected-account'].value,'hk4e:1');
     assert.equal(app.state.settings.preferences.selected_account_key.value,'hk4e:1');
@@ -70,4 +71,32 @@ test('log acquisition does not offer a browser cloud-game path that cannot retur
   const root=node();app.drawPage('获取',root);
   assert.match(root.innerHTML,/不支持.*浏览器.*云游戏/);
   assert.doesNotMatch(root.innerHTML,/data-url=|打开官方云游戏网页/);
+});
+
+test('choosing Mihoyo while another operation is busy reads the session once that operation ends',async()=>{
+  const {app,context,reads}=appFixture();const calls=[],call=context.ats.call;
+  context.ats.call=async(method,payload)=>{calls.push(method);return call(method,payload);};
+  await app.load();app.openView('acquire');app.setBusy(true);app.state.acquireSource='mihoyo';app.requestMihoyoSource();
+  assert.equal(calls.filter(method=>method==='storage.secret.get').length,0);
+  app.setBusy(false);await tick();await tick();
+  assert.equal(calls.filter(method=>method==='storage.secret.get').length,1);
+  assert.ok(reads.includes('mihoyo-session'));assert.equal(app.state.busy,false);
+});
+
+test('leaving the Mihoyo source before the pending operation ends does not read credentials',async()=>{
+  const {app,context}=appFixture();const calls=[],call=context.ats.call;
+  context.ats.call=async(method,payload)=>{calls.push(method);return call(method,payload);};
+  await app.load();app.openView('acquire');app.setBusy(true);app.state.acquireSource='mihoyo';app.requestMihoyoSource();
+  app.state.acquireSource='link';app.setBusy(false);await tick();
+  assert.equal(calls.filter(method=>method==='storage.secret.get').length,0);
+});
+
+test('a queued Mihoyo read waits through the next busy operation without losing the request',async()=>{
+  const {app,context}=appFixture();const calls=[],call=context.ats.call;
+  context.ats.call=async(method,payload)=>{calls.push(method);return call(method,payload);};
+  await app.load();app.openView('acquire');app.setBusy(true);app.state.acquireSource='mihoyo';app.requestMihoyoSource();
+  app.setBusy(false);app.setBusy(true);await tick();
+  assert.equal(calls.filter(method=>method==='storage.secret.get').length,0);
+  app.setBusy(false);await tick();await tick();
+  assert.equal(calls.filter(method=>method==='storage.secret.get').length,1);
 });

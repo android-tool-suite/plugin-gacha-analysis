@@ -51,20 +51,253 @@
   },
   "provides": { "capabilities": [{
     "id": "gacha.summary", "version": "1.0.0", "workerEntry": "summary-worker",
-    "methods": ["gacha.summary.get"]
+    "methods": ["gacha.summary.get", "gacha.summary.configure"]
   }] },
   "contributes": {
     "tools": [{ "id": "main", "uiEntry": "main" }],
-    "homeWidgets": [{
-      "id": "summary", "title": "抽卡记录", "template": "metric",
-      "dataSource": "gacha.summary.get", "sizes": ["2x2", "4x2"]
-    }]
+    "homeWidgets": [
+  {
+    "id": "summary",
+    "title": "抽卡单池进度",
+    "template": "metric",
+    "dataSource": "gacha.summary.get",
+    "configurationSource": "gacha.summary.configure",
+    "sizes": [
+      "2x2",
+      "4x2"
+    ]
+  },
+  {
+    "id": "pools",
+    "title": "抽卡多池概览",
+    "template": "rows",
+    "dataSource": "gacha.summary.get",
+    "configurationSource": "gacha.summary.configure",
+    "sizes": [
+      "4x2"
+    ]
+  },
+  {
+    "id": "records",
+    "title": "抽卡记录概况",
+    "template": "rows",
+    "dataSource": "gacha.summary.get",
+    "configurationSource": "gacha.summary.configure",
+    "sizes": [
+      "2x2",
+      "4x2"
+    ]
+  }
+]
   },
   "datasets": [
-    { "id": "gacha-settings", "title": "账号选择与分析设置", "category": "settings", "formatVersion": 1, "sensitive": false, "mediaType": "application/json", "validator": "json", "maxBytes": 1048576, "restoreModes": ["replace"], "dependsOn": [] },
-    { "id": "genshin-records", "title": "原神祈愿记录", "category": "data", "formatVersion": 1, "sensitive": false, "mediaType": "application/json", "validator": "json", "maxBytes": 268435456, "restoreModes": ["replace"], "dependsOn": [] },
-    { "id": "starrail-records", "title": "星穹铁道跃迁记录", "category": "data", "formatVersion": 1, "sensitive": false, "mediaType": "application/json", "validator": "json", "maxBytes": 268435456, "restoreModes": ["replace"], "dependsOn": [] },
-    { "id": "mihoyo-session", "title": "米游社会话", "category": "secret", "formatVersion": 1, "sensitive": true, "mediaType": "application/json", "validator": "json", "maxBytes": 1048576, "restoreModes": ["replace"], "dependsOn": [] }
+    {
+      "id": "gacha-settings",
+      "title": "账号选择与分析设置",
+      "category": "settings",
+      "formatVersion": 1,
+      "sensitive": false,
+      "mediaType": "application/json",
+      "validator": "json",
+      "maxBytes": 1048576,
+      "restoreModes": [
+        "merge",
+        "replace"
+      ],
+      "dependsOn": [],
+      "mergePolicy": {
+        "format": "json",
+        "rule": {
+          "kind": "object",
+          "fields": {
+            "preferences": {
+              "kind": "map",
+              "items": {
+                "kind": "current"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "genshin-records",
+      "title": "原神祈愿记录",
+      "category": "data",
+      "formatVersion": 1,
+      "sensitive": false,
+      "mediaType": "application/json",
+      "validator": "json",
+      "maxBytes": 268435456,
+      "restoreModes": [
+        "merge",
+        "replace"
+      ],
+      "dependsOn": [],
+      "mergePolicy": {
+        "format": "json",
+        "rule": {
+          "kind": "object",
+          "fields": {
+            "accounts": {
+              "kind": "array",
+              "keys": [
+                "uid"
+              ],
+              "items": {
+                "kind": "newer",
+                "timestamp": "lastSyncAt"
+              }
+            },
+            "records": {
+              "kind": "array",
+              "keys": [
+                "uid",
+                "uigf_gacha_type|gacha_type",
+                "id"
+              ],
+              "requireAllKeys": true,
+              "aliases": {
+                "uigf_gacha_type|gacha_type": {
+                  "400": "301",
+                  "20011": "2000",
+                  "20012": "2000",
+                  "20021": "2000",
+                  "20022": "2000"
+                }
+              },
+              "sortBy": "time",
+              "descending": true
+            },
+            "poolSyncState": {
+              "kind": "array",
+              "keys": [
+                "uid",
+                "poolType"
+              ],
+              "items": {
+                "kind": "object",
+                "fields": {
+                  "historyComplete": {
+                    "kind": "or"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "starrail-records",
+      "title": "星穹铁道跃迁记录",
+      "category": "data",
+      "formatVersion": 1,
+      "sensitive": false,
+      "mediaType": "application/json",
+      "validator": "json",
+      "maxBytes": 268435456,
+      "restoreModes": [
+        "merge",
+        "replace"
+      ],
+      "dependsOn": [],
+      "mergePolicy": {
+        "format": "json",
+        "rule": {
+          "kind": "object",
+          "fields": {
+            "accounts": {
+              "kind": "array",
+              "keys": [
+                "uid"
+              ],
+              "items": {
+                "kind": "newer",
+                "timestamp": "lastSyncAt"
+              }
+            },
+            "records": {
+              "kind": "array",
+              "keys": [
+                "uid",
+                "uigf_gacha_type|gacha_type",
+                "id"
+              ],
+              "requireAllKeys": true,
+              "sortBy": "time",
+              "descending": true
+            },
+            "poolSyncState": {
+              "kind": "array",
+              "keys": [
+                "uid",
+                "poolType"
+              ],
+              "items": {
+                "kind": "object",
+                "fields": {
+                  "historyComplete": {
+                    "kind": "or"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "mihoyo-session",
+      "title": "米游社会话",
+      "category": "secret",
+      "formatVersion": 1,
+      "sensitive": true,
+      "mediaType": "application/json",
+      "validator": "json",
+      "maxBytes": 1048576,
+      "restoreModes": [
+        "merge",
+        "replace"
+      ],
+      "dependsOn": [],
+      "mergePolicy": {
+        "format": "json",
+        "rule": {
+          "kind": "object"
+        }
+      }
+    },
+    {
+      "id": "record-links",
+      "title": "抽卡链接缓存",
+      "category": "secret",
+      "formatVersion": 1,
+      "sensitive": true,
+      "mediaType": "application/json",
+      "validator": "json",
+      "maxBytes": 1048576,
+      "restoreModes": [
+        "merge",
+        "replace"
+      ],
+      "dependsOn": [],
+      "mergePolicy": {
+        "format": "json",
+        "rule": {
+          "kind": "object",
+          "fields": {
+            "links": {
+              "kind": "map",
+              "items": {
+                "kind": "newer",
+                "timestamp": "capturedAt"
+              }
+            }
+          }
+        }
+      }
+    }
   ],
   "tasks": [{
     "id": "refresh-summary", "backgroundEntry": "summary-worker",

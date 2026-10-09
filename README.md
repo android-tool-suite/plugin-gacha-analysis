@@ -29,7 +29,7 @@ gradle -p plugins\gacha-analysis clean testDebugUnitTest collectArtifacts
 
 - 日常 CI 只测试、构建并上传产物。Debug 通过本地构建和 ADB 导入进行调试，不发布远程版本或调试索引。
 - 推送 `v<versionName>` 标签后，工作流测试、构建并发布正式 Release。
-- 两种发布都会生成带通道信息的元数据和校验和，并通过 GitHub App 短时令牌发送事件通知插件索引更新。
+- 正式发布生成带通道信息的元数据和校验和，并通过 GitHub App 短时令牌发送事件通知插件索引更新。
 - `data-compatibility.json` 声明当前构建可能写入的数据格式及可读取范围；修改数据库或设置格式时必须同步递增并评估兼容范围，宿主据此决定是否允许历史版本降级。
 
 ## 数据与安全

@@ -1,8 +1,8 @@
 plugins { id "base" }
 
-def pluginVersionName = "2.0.1"
-def pluginVersionCode = 19
-def minHostVersionCode = 23
+def pluginVersionName = "2.1.0"
+def pluginVersionCode = 20
+def minHostVersionCode = 24
 def npmExecutable = System.getProperty("os.name").toLowerCase(java.util.Locale.ROOT).contains("windows") ? "npm.cmd" : "npm"
 def runtimePackageStaging = layout.buildDirectory.dir("generated/runtime-package")
 
@@ -46,6 +46,8 @@ def prepareRuntimePackage = tasks.register("prepareRuntimePackage") {
         def root = runtimePackageStaging.get().asFile
         delete new File(root, "web"), new File(root, "ui"), new File(root, "workers"), new File(root, "META-INF")
         copy { from("src/web"); into(new File(root, "web")) }
+        new File(root, "web/build-version.js").setText(
+                "window.gachaBuild = " + groovy.json.JsonOutput.toJson([version: pluginVersionName]) + ";\n", "UTF-8")
         copy { from("src/ui"); into(new File(root, "ui")) }
         copy { from("src/workers"); into(new File(root, "workers")) }
         copy {
