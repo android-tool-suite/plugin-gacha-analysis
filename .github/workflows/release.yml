@@ -29,7 +29,18 @@ jobs:
       - name: Checkout plugin
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
+          fetch-depth: 0
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+
+      - name: Test release notes and audit changelog history
+        shell: pwsh
+        run: |
+          .\.github\scripts\test-release-notes.ps1
+          . .\.github\scripts\release-notes.ps1
+          $tag = if ('${{ github.event_name }}' -eq 'push') { '${{ github.ref_name }}' } else { '${{ inputs.tag }}' }
+          $version = $tag -replace '^v', ''
+          $null = Get-ChangelogReleaseNotes -Text (Get-Content .\CHANGELOG.md -Raw -Encoding utf8) -Version $version -RequirePublished
+          Assert-ChangelogHistory -RepositoryRoot (Get-Location).Path -CurrentVersion $version
 
       - name: Set up Node.js 24
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
@@ -80,13 +91,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $tag = if ('${{ github.event_name }}' -eq 'push') { '${{ github.ref_name }}' } else { '${{ inputs.tag }}' }
+          $releaseMetadata = Get-Content -LiteralPath .\release-dist\release-metadata.json -Raw | ConvertFrom-Json
+          $releaseArtifact = Join-Path .\release-dist $releaseMetadata.artifactName
           gh release create $tag `
-            .\release-dist\gacha-analysis.atsplugin `
+            $releaseArtifact `
             .\release-dist\release-metadata.json `
             .\release-dist\SHA256SUMS.txt `
             --verify-tag --draft `
             --title "Gacha Analysis $tag" `
-            --generate-notes
+            --notes-file .\release-dist\release-notes.md
           if ($LASTEXITCODE -ne 0) { throw 'Release creation failed' }
           gh release edit $tag --draft=false --latest
           if ($LASTEXITCODE -ne 0) { throw 'Release publication failed' }

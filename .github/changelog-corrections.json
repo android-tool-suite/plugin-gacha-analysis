@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "entries": [
+    {
+      "version": "2.0.0",
+      "tagCommit": "e3800538035068a82311cdae8202528f70d47538",
+      "originalSha256": "fd9cbe93b1b22e2e24441acb28257f08b78108060bacb3e079816757d2a675dc",
+      "correctedSha256": "07e6bbedb2aca0c9257cf8c08872cbc187e15f69b7a5e444397742790e904616",
+      "reason": "State the delivered migration behavior instead of intermediate-state repairs, and distinguish UIGF exports from sensitive host backups.",
+      "evidence": [
+        "v1.7.1:src/main/java/com/androidtoolsuite/app/plugins/gacha/GachaAnalysisPlugin.kt",
+        "9dd59b6:src/manifest.template.json",
+        "ee3dd6d:src/manifest.template.json",
+        "v2.0.0:src/web/app.js",
+        "v2.0.0:src/manifest.template.json"
+      ]
+    }
+  ]
+}
