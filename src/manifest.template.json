@@ -37,7 +37,10 @@
           "hosts": [
             "public-operation-hk4e.mihoyo.com", "public-operation-hk4e-sg.hoyoverse.com",
             "public-operation-hkrpg.mihoyo.com", "public-operation-hkrpg-sg.hoyoverse.com",
-            "api-takumi.mihoyo.com", "api-takumi.miyoushe.com", "passport-api.mihoyo.com"
+            "api-takumi.mihoyo.com", "api-takumi.miyoushe.com", "passport-api.mihoyo.com",
+            "raw.githubusercontent.com", "starrailstation.com", "sg-public-api.hoyolab.com",
+            "sg-hk4e-api-static.hoyoverse.com", "hk4e-ann-api.mihoyo.com",
+            "hkrpg-ann-api.mihoyo.com", "wiki.biligame.com"
           ],
           "methods": ["GET", "POST"], "headers": ["cookie"], "maxResponseBytes": 8388608
         }
@@ -267,6 +270,30 @@
           "kind": "object"
         }
       }
+    },
+    {
+      "id": "genshin-reference",
+      "title": "原神公开游戏资料",
+      "category": "cache",
+      "formatVersion": 1,
+      "sensitive": false,
+      "mediaType": "application/json",
+      "validator": "json",
+      "maxBytes": 8388608,
+      "restoreModes": ["replace"],
+      "dependsOn": []
+    },
+    {
+      "id": "starrail-reference",
+      "title": "星铁公开游戏资料",
+      "category": "cache",
+      "formatVersion": 1,
+      "sensitive": false,
+      "mediaType": "application/json",
+      "validator": "json",
+      "maxBytes": 8388608,
+      "restoreModes": ["replace"],
+      "dependsOn": []
     },
     {
       "id": "record-links",

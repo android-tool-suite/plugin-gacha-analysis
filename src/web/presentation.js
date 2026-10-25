@@ -19,13 +19,17 @@
     const losses = account.game === 'hkrpg' ? preference(settings, lossKey(account), preference(settings, 'starrail_custom_loss_names', [])) : [];
     return {sources: Array.isArray(sources) ? sources.map(value => String(value).toLowerCase().replaceAll('_', '-')) : defaults, losses: Array.isArray(losses) ? losses : []};
   }
-  function records(snapshot, game, query, pool, rarity) {
-    const search = query.trim().toLowerCase();
-    return [...(snapshot?.records || [])].filter(item =>
+  const recordIndexes=new WeakMap();
+  function records(snapshot, game, query='', pool='all', rarity=0) {
+    if(!snapshot)return [];
+    let index=recordIndexes.get(snapshot);if(!index||index.records!==snapshot.records||index.length!==snapshot.records.length){index={records:snapshot.records,length:snapshot.records.length,sorted:[...snapshot.records].sort((a,b)=>-gachaModel.order(a,b)),filters:new Map()};recordIndexes.set(snapshot,index);}
+    const search=query.trim().toLowerCase(),key=JSON.stringify([game,search,pool,rarity]);if(index.filters.has(key))return index.filters.get(key);
+    const result=index.sorted.filter(item =>
       (!search || `${item.name} ${item.item_id} ${item.id} ${item.time}`.toLowerCase().includes(search)) &&
       (pool === 'all' || gachaModel.poolType(game, item.uigf_gacha_type || item.gacha_type) === pool) &&
       (!rarity || Number(item.rank_type) === rarity)
-    ).sort((a, b) => -gachaModel.order(a, b));
+    );
+    if(index.filters.size>=6)index.filters.delete(index.filters.keys().next().value);index.filters.set(key,result);return result;
   }
   function recordMonths(records) {
     const counts = new Map();

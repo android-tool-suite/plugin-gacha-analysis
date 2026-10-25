@@ -22,10 +22,10 @@ for(const [game,type] of [['hk4e','301'],['hkrpg','11']])test(`${game} averages 
   assert.equal(JSON.stringify(records),before);
 });
 
-test('a tracked pool without an identified UP shows an empty average, and permanent pools omit the UP statistic',()=>{
+test('a tracked pool without an identified UP omits an unavailable average, and permanent pools omit the UP statistic',()=>{
   const record={uid:'8',id:'1',gacha_type:'11',rank_type:'5',name:'测试物品',time:'2026-09-20 12:00:00',is_up:'false'};
   const state={snapshot:model.snapshot('hkrpg',[record],[],['record-field']),selected:{game:'hkrpg',uid:'8'},view:{key:'11'},detailFilter:'all'};
-  assert.match(views.pool(state),/<strong>—<\/strong><span>平均 UP 抽数<\/span>/);
+  assert.doesNotMatch(views.pool(state),/平均 UP 抽数/);assert.match(views.pool(state),/已确认 UP \/ 非 UP/);
   state.snapshot=model.snapshot('hkrpg',[{...record,gacha_type:'1'}]);state.view.key='1';
   assert.doesNotMatch(views.pool(state),/平均 UP 抽数|UP \/ 非 UP|未知归属/);
 });

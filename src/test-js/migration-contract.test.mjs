@@ -13,8 +13,11 @@ assert.equal(manifest.formatVersion, 3);
 assert.deepEqual(manifest.requires.plugins, []);
 assert.equal(manifest.runtime.providers.length, 0);
 assert.equal(manifest.runtime.ui[0].type, 'declarative');
-assert.equal(manifest.datasets.length, 5);
-assert.deepEqual(new Set(manifest.datasets.map(item => item.id)), new Set([...migration.datasets.map(item => item.id),'record-links']));
+assert.equal(manifest.datasets.length, 7);
+assert.deepEqual(new Set(manifest.datasets.map(item => item.id)), new Set([...migration.datasets.map(item => item.id),'record-links','genshin-reference','starrail-reference']));
+for(const id of ['genshin-reference','starrail-reference']){
+  const item=manifest.datasets.find(item=>item.id===id);assert.equal(item.category,'cache');assert.equal(item.sensitive,false);assert.equal(item.formatVersion,1);assert.deepEqual(item.dependsOn,[]);assert.deepEqual(item.restoreModes,['replace']);
+}
 for (const expected of migration.datasets) {
   const actual = manifest.datasets.find(item => item.id === expected.id);
   assert.equal(actual.formatVersion, expected.formatVersion);

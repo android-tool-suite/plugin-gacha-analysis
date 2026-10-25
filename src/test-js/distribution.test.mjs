@@ -10,10 +10,10 @@ const records=[
   {uid:'1',id:'4',gacha_type:'301',rank_type:'5',name:'未知',time:'invalid'}
 ];
 const state={selected:{game:'hk4e',uid:'1'},snapshot:gachaModel.snapshot('hk4e',records,[],['record-field'])};
-test('distribution segments each resource by pool and preserves unknown dates',()=>{
+test('distribution segments each resource by pool and excludes unconfirmed dates without changing records',()=>{
   const before=JSON.stringify(records),result=gachaDistribution.compute(state);
-  assert.equal(result.total,4);assert.equal(result.groups.find(group=>group.key==='2022-09').segments.length,2);
-  assert.equal(result.groups.find(group=>group.key==='unknown').total,1);
+  assert.equal(result.total,3);assert.equal(result.selectedTotal,4);assert.equal(result.skipped,1);assert.equal(result.groups.find(group=>group.key==='2022-09').segments.length,2);
+  assert.ok(result.groups.every(group=>group.key!=='unknown'));assert.equal(state.snapshot.records.length,4);
   assert.equal(result.resources.length,2);assert.equal(JSON.stringify(records),before);
 });
 test('resource and pool filters operate together without confusing permanent and activity resources',()=>{
@@ -25,10 +25,10 @@ test('monthly analysis includes the month, its complete daily axis and actual fi
   assert.equal(result.total,2);assert.equal(result.fiveStars.length,1);assert.equal(result.days.length,30);
   assert.equal(result.days[0].total,2);assert.equal(result.activeDays,1);assert.equal(result.resources[0].count,2);
 });
-test('version grouping uses public date ranges or explicit metadata and keeps unmatched data unknown',()=>{
+test('version grouping uses supported ranges or explicit metadata and omits unmatched records',()=>{
   assert.equal(gachaDistribution.version(records[0],'hk4e'),'3.0');
   const result=gachaDistribution.compute(state,{mode:'version'});
-  assert.equal(result.total,4);assert.ok(result.groups.some(group=>group.key==='unknown'));
+  assert.equal(result.total,3);assert.equal(result.skipped,1);assert.ok(result.groups.every(group=>group.key!=='unknown'));
   assert.equal(gachaDistribution.version({time:'invalid'},'hkrpg'),null);
   assert.equal(gachaDistribution.version({game_version:'3.1'},'hkrpg'),'3.1');
   assert.equal(gachaDistribution.version({time:'2025-11-01 12:00:00'},'hk4e'),'6.1');

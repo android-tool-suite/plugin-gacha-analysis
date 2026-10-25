@@ -38,11 +38,11 @@ test('record detail identifies same IDs by account and normalized pool',()=>{
   assert.deepEqual(plain(grouped.map(group=>[group.date,group.records.length])),[['2026-09-21',2],['2026-09-20',1],['2025-09-20',1]]);
 });
 
-test('independent pool detail shows the complete target history and keeps unknown ownership distinct',()=>{
+test('independent pool detail shows the complete target history without fabricating ownership badges',()=>{
   const snapshot=model.snapshot('hkrpg',records,[],['record-field']);
   const state={snapshot,selected:{game:'hkrpg',uid:'8'},view:{key:'11'},detailFilter:'unknown'};
   const html=views.pool(state);
-  assert.match(html,/角色丙/);assert.doesNotMatch(html,/角色乙|&lt;角色&gt;/);assert.match(html,/未知/);
+  assert.match(html,/角色丙/);assert.doesNotMatch(html,/角色乙|&lt;角色&gt;/);assert.doesNotMatch(html,/class="badge[^>]*>未知|未知归属/);assert.match(html,/已确认归属/);
   state.detailFilter='other';assert.match(views.pool(state),/角色乙/);assert.doesNotMatch(views.pool(state),/角色丙/);
   state.detailFilter='all';assert.equal((views.pool(state).match(/class="wish-pull-entry /g)||[]).length,3);
   const beyond={...records[0],gacha_type:'1000',rank_type:'4'};

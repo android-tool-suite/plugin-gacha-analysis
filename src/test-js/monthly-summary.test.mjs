@@ -60,7 +60,7 @@ test('leap days are counted and invalid dates stay outside the daily axis',()=>{
   const feb=gachaDistribution.summary(s,{filter:{mode:'month'},key:'2024-02'});
   assert.equal(feb.days.length,29);assert.equal(feb.total,1);
   const unknown=gachaDistribution.summary(s,{filter:{mode:'month'},key:'unknown'});
-  assert.equal(unknown.total,1);assert.equal(unknown.undated,1);assert.equal(unknown.days.length,0);
+  assert.equal(unknown.total,0);assert.equal(unknown.undated,0);assert.equal(unknown.days.length,0);const distribution=gachaDistribution.compute(s);assert.equal(distribution.total,1);assert.equal(distribution.skipped,1);assert.equal(s.snapshot.records.length,2);
 });
 test('the distribution opens analysis, details are inside More, and untrusted names are escaped',()=>{
   const html=gachaViews.months(state);

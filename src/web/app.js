@@ -9,6 +9,12 @@
   Object.assign(state,{view:null,detailFilter:'all',analysisDraft:null,exportKeys:[],importKeys:[],transferResult:null,deleteKeys:[],accountDraft:null,entryAccountKey:null});
   let pendingWidgetEntry=null,handledWidgetEntry=null;
   state.distributionFilter={mode:"month",resources:[],pools:[]};state.recordDrill=null;let distributionDraft=null;
+  state.referenceStores={};state.referenceErrors={};state.referenceResults={};state.referenceUpdating=false;
+  let referenceReads=new Map();
+  async function ensureReference(game){
+    if(!window.gachaReference||referenceReads.has(game))return referenceReads.get(game);
+    const pending=gachaReference.load(ats,game).then(store=>{state.referenceStores[game]=store;delete state.referenceErrors[game];}).catch(error=>{state.referenceErrors[game]=error.message;});referenceReads.set(game,pending);return pending;
+  }
   const ui=Object.fromEntries(['tabs','progress','notice','content','refresh'].map(id=>[id,document.getElementById(id)]));
   const byId=id=>{const local=ui.content.querySelector(`[id="${id}"]`);if(local)return local;const global=document.getElementById(id);return global&&!global.closest('.tab-page')?global:null;};
   const all=selector=>ui.content.querySelectorAll(selector);
@@ -39,8 +45,9 @@
     state.logRange=Number(preference('log-lookback-minutes',0));if(![0,5,30,120,1440].includes(state.logRange))state.logRange=0;
     await pager.initialize({deferContent:true});
     baseLoaded=true;
-    for(let attempt=0;attempt<2;attempt++){state.selected=accounts().find(account=>gachaModel.key(account)===state.entryAccountKey)||gachaPresentation.selection(accounts(),state.selected,state.settings);if(!state.selected||localData.has(state.selected.game))break;await localData.ensure(state.selected.game);}
-    if(state.page==='数据')await localData.all();
+    referenceReads=new Map();
+    for(let attempt=0;attempt<2;attempt++){state.selected=accounts().find(account=>gachaModel.key(account)===state.entryAccountKey)||gachaPresentation.selection(accounts(),state.selected,state.settings);if(!state.selected)break;await Promise.all([localData.ensure(state.selected.game),ensureReference(state.selected.game)]);if(localData.has(state.selected.game))break;}
+    if(['export','delete'].includes(state.view?.kind))await localData.all();
     if(state.page==='获取'&&state.acquireSource==='mihoyo')try{await ensureSession();}catch(error){sessionError=true;notice(error.message,'danger');}
     selectInitial();render();
   }catch(error){loadFailed=!baseLoaded;if(baseLoaded)selectInitial();notice(error.message||'读取本地记录失败','danger');render();}finally{initializing=false;setBusy(false);document.body?.classList.remove('initializing');document.body?.removeAttribute('aria-busy');}}
@@ -50,7 +57,7 @@
     if(state.selected&&gachaModel.key(state.selected)===key&&!state.snapshot)return retryRecords();
     setBusy(true);
     try{
-      await localData.ensure(wanted.game);
+      await Promise.all([localData.ensure(wanted.game),ensureReference(wanted.game)]);
       const actual=accounts().find(account=>gachaModel.key(account)===key);if(!actual)throw Error('账号列表已变化，请刷新后重试');
       const candidate=selectionState(actual);
       if(persist)await saveSettings(candidate.settings);
@@ -68,19 +75,23 @@
     catch(error){notice(error.message,'danger');}
     finally{render();setBusy(false);}
   }
-  async function loadDataPage(){if(initializing||loadFailed||!localData||(localData.has('hk4e')&&localData.has('hkrpg')))return;if(state.busy){pendingDataPage=true;return;}setBusy(true);try{await localData.all();}catch(error){notice(error.message,'danger');}finally{selectInitial();render();setBusy(false);}}
+  async function loadDataPage(){if(initializing||loadFailed||!localData||(localData.has('hk4e')&&localData.has('hkrpg')))return;if(state.busy){pendingDataPage=true;return;}setBusy(true);try{await localData.all();}catch(error){notice(error.message,'danger');}finally{render();setBusy(false);}}
   async function openMihoyo(){sessionError=false;setBusy(true);try{await ensureSession();render();}catch(error){sessionError=true;notice(error.message,'danger');render();}finally{setBusy(false);}if(!sessionError&&state.mihoyoCookie&&!state.mihoyoRolesLoaded)await loadMihoyoRoles(state.mihoyoCookie);}
   function requestMihoyoSource(){if(state.page!=='获取'||state.acquireSource!=='mihoyo')return;if(state.busy){pendingMihoyoSource=true;return;}openMihoyo();}
   const accounts=()=>gachaAccountDirectory.accounts(state.datasets,state.directory,game=>!!localData?.has(game));
   function preference(name,fallback){const item=state.settings.preferences?.[name];return item?item.value:fallback;}
   function setPreference(name,type,value){state.settings.preferences=state.settings.preferences||{};state.settings.preferences[name]={type,value};}
+  let analyzedAccount=null;
   function selectionState(selected){
     const settings=JSON.parse(JSON.stringify(state.settings));let snapshot=null;
     if(selected&&localData.has(selected.game)){
       const key=gachaModel.key(selected);settings.preferences=settings.preferences||{};
       settings.preferences['selected-account']={type:'string',value:key};settings.preferences.selected_account_key={type:'string',value:key};settings.preferences['last-account:'+selected.game]={type:'string',value:key};
-      const records=state.datasets[selected.game].records.filter(item=>item.uid===selected.uid),options=gachaPresentation.analysisOptions(settings,selected);
-      snapshot=gachaModel.snapshot(selected.game,records,options.losses,options.sources,Number(selected.timezone||8));
+      const dataset=state.datasets[selected.game],options=gachaPresentation.analysisOptions(settings,selected);
+      const overrides=preference('record-up-overrides:'+key,{});
+      const signature=JSON.stringify([key,selected.timezone,selected.timezoneAssumed,selected.region,options,overrides]),reference=window.gachaReference?.active(selected.game);
+      if(analyzedAccount?.dataset===dataset&&analyzedAccount.signature===signature&&analyzedAccount.reference===reference)snapshot=analyzedAccount.snapshot;
+      else{const records=dataset.records.filter(item=>item.uid===selected.uid);snapshot=gachaModel.snapshot(selected.game,records,options.losses,options.sources,Number(selected.timezone??8),{...selected,overrides});analyzedAccount={dataset,signature,reference,snapshot};}
     }
     return {selected,settings,snapshot};
   }
@@ -99,7 +110,7 @@
     if(state.view&&root===document.getElementById('view-content'))renderView();
     else if(page==='概览')renderOverview();else if(page==='记录')renderRecords();else if(page==='获取')renderAcquire();else renderData();bind();applyFilters();
   }finally{state.page=previousPage;ui.content=previousRoot;}}
-  const pager=createTabPager({host:ui.content,tabs:ui.tabs,pages,initialPage:state.page,preloadNeighbors:false,isBusy:()=>false,renderPage:drawPage,onSelect:(page,root)=>{state.page=page;ui.content=root;renderTabs();setBusy(state.busy);if(page==='数据')loadDataPage();if(page==='获取'&&state.acquireSource==='mihoyo'&&!state.busy)openMihoyo();}});
+  const pager=createTabPager({host:ui.content,tabs:ui.tabs,pages,initialPage:state.page,preloadNeighbors:false,isBusy:()=>false,renderPage:drawPage,onSelect:(page,root)=>{state.page=page;ui.content=root;renderTabs();setBusy(state.busy);if(page==='获取'&&state.acquireSource==='mihoyo'&&!state.busy)openMihoyo();}});
   ui.content=pager.root(state.page);
   function render(){renderAccounts();renderTabs();if(state.view){ui.content=document.getElementById('view-content');drawPage(state.page,ui.content);}else{ui.content=pager.root(state.page);pager.refresh();}updateViewChrome();backNavigation.sync();}
   function accountSelect(){return '';}
@@ -131,7 +142,8 @@
     if(kind==='export'){state.exportKeys=accounts().map(gachaModel.key);state.transferResult=null;}
     if(kind==='delete')state.deleteKeys=[];
     render();document.getElementById('view-scroll').scrollTop=0;
-    if(['data','export','delete'].includes(kind))loadDataPage();
+    if(['export','delete'].includes(kind))loadDataPage();
+    if(kind==='reference')Promise.all(['hk4e','hkrpg'].map(ensureReference)).then(()=>{if(state.view?.kind==='reference')render();});
     if(kind==='acquire'&&state.acquireSource==='mihoyo'&&!state.busy)openMihoyo();
   }
   let recordLinkCache;
@@ -184,7 +196,7 @@
     const root=document.getElementById('view-scroll');root.hidden=!state.view;
     document.getElementById('view-header').hidden=!state.view;
     if(!state.view)return;
-    const titles={delete:'删除记录',acquire:'获取记录',data:'账号管理',analysis:'统计设置',export:'导出记录',import:'导入记录',account:'管理本地账号',months:'记录分布','distribution-detail':'记录分析'};
+    const titles={reference:'游戏资料',delete:'删除记录',acquire:'获取记录',data:'账号管理',analysis:'统计设置',export:'导出记录',import:'导入记录',account:'管理本地账号',months:'记录分布','distribution-detail':'记录分析'};
     document.getElementById('view-title').textContent=state.view.kind==='pool'?state.snapshot?.stats.find(item=>item.type===state.view.key)?.label||'卡池详情':titles[state.view.kind]||'记录';
     const contextAccount=['pool','analysis','records','months','distribution-detail'].includes(state.view.kind)?state.selected:null;
     document.getElementById('view-subtitle').textContent=contextAccount?`${gachaModel.games[contextAccount.game].label} · ${contextAccount.uid}`:'';
@@ -198,6 +210,7 @@
     else if(kind==='months')ui.content.innerHTML=gachaViews.months(state);
     else if(kind==='distribution-detail')ui.content.innerHTML=gachaViews.distributionSummary(state);
     else if(kind==='analysis')ui.content.innerHTML=gachaViews.analysis(state);
+    else if(kind==='reference')ui.content.innerHTML=gachaViews.reference(state);
     else if(kind==='export')renderExport();
     else if(kind==='import')renderImport();
     else if(kind==='account')renderAccount();
@@ -226,11 +239,59 @@
   function showRecord(identity){
     const item=gachaPresentation.recordDetail(state.snapshot,state.selected?.game,identity);if(!item)return;
     const {record,pool,pull,pity}=item;
-    document.getElementById('record-detail').innerHTML=`<h2>${esc(record.name||'未知物品')}</h2><dl class="record-fields"><div><dt>星级</dt><dd>${Number(record.rank_type)} 星</dd></div><div><dt>时间</dt><dd>${esc(record.time)}</dd></div><div><dt>卡池</dt><dd>${esc(pool?.label||'未知卡池')}</dd></div><div><dt>本地连续抽数</dt><dd>${pity??'—'} 抽</dd></div><div><dt>记录 ID</dt><dd>${esc(record.id)}</dd></div><div><dt>物品类型</dt><dd>${esc(record.item_type||'未提供')}</dd></div>${pool?.tracksUp&&pull?`<div><dt>归属</dt><dd>${pull.isLoss===null?'未知':pull.isLoss?'非 UP':'UP'}（按当前账号设置分析）</dd></div>`:''}</dl>`;
+    document.getElementById('record-detail').innerHTML=`<h2>${esc(record.name||'未知物品')}</h2><dl class="record-fields"><div><dt>星级</dt><dd>${Number(record.rank_type)} 星</dd></div><div><dt>时间</dt><dd>${esc(record.time)}</dd></div><div><dt>卡池</dt><dd>${esc(pool?.label||'未知卡池')}</dd></div><div><dt>本地连续抽数</dt><dd>${pity??'—'} 抽</dd></div><div><dt>记录 ID</dt><dd>${esc(record.id)}</dd></div><div><dt>物品类型</dt><dd>${esc(record.item_type||'未提供')}</dd></div>${pool?.tracksUp&&pull&&pull.isLoss!==null?`<div><dt>归属</dt><dd>${pull.isLoss?'非 UP':'UP'}（按当前账号设置分析）</dd></div>`:''}</dl>`;
+    const resolved=window.gachaReference?.resolve(record,state.selected.game,gachaReference.recordContext(state.snapshot.records,state.selected.game,state.selected)),evidence=pull?.evidence;
+    const detail=document.getElementById('record-detail'),fields=[];
+    if(resolved?.possibleError)detail.insertAdjacentHTML('beforeend','<p class="record-warning"><span class="badge warning">可能错误</span> '+esc(resolved.possibleError)+' 保留所指卡池，请核对原始记录或资料。</p>');
+    const field=(label,value)=>{if(value!==undefined&&value!==null&&value!=='')fields.push(`<div><dt>${esc(label)}</dt><dd>${esc(value)}</dd></div>`);};
+    field('原始池类型',record.gachaTypeAssumed?'请求类别 '+record.gacha_type:record.gacha_type);field('卡池 ID',record.gacha_id||record.schedule_id);field('物品 ID',record.item_id);
+    const timezone=window.gachaReference?.timezoneOf(record,state.selected);if(timezone!==null&&timezone!==undefined)field('时区','UTC'+(timezone>=0?'+':'')+timezone);
+    field('版本',resolved?.version);if(resolved?.phase)field('期次','第 '+resolved.phase.split(':')[1]+' 期');if(resolved?.banner)field('独立卡池',gachaReference.bannerName(resolved.banner,gachaReference.active(state.selected.game)));else if(resolved?.nativeIdentity)field('独立卡池',resolved.nativeIdentity.label);if(resolved?.identityBasis)field('归类依据',resolved.identityBasis);if(resolved?.identityReason)field('卡池归类',resolved.identityReason);if(resolved?.conflict)field('资料核对',resolved.conflict);
+    if(evidence?.value!==null&&evidence?.value!==undefined)field('判断依据',evidence.reason);
+    if(fields.length)detail.insertAdjacentHTML('beforeend','<dl class="record-fields">'+fields.join('')+'</dl>');
+    if(Object.keys(record.fieldConflicts||{}).length)detail.insertAdjacentHTML('beforeend','<details class="record-evidence"><summary>原始字段存在冲突</summary>'+Object.entries(record.fieldConflicts).map(([field,values])=>'<p>'+esc(field)+'：保留 '+esc(record[field])+'；其他来源 '+esc(values.map(value=>String(value.value)+'（'+value.source+'）').join(' / '))+'</p>').join('')+'</details>');
+    if(pool?.tracksUp&&pull){detail.insertAdjacentHTML('beforeend','<p class="supporting">人工修订优先于原始标记和资料，原始记录保留。</p><div class="record-corrections"><button class="secondary" data-record-override="auto">按资料判断</button><button class="secondary" data-record-override="up">确认 UP</button><button class="secondary" data-record-override="other">确认非 UP</button></div>');detail.querySelectorAll('[data-record-override]').forEach(button=>button.onclick=()=>setRecordOverride(identity,button.dataset.recordOverride==='auto'?null:button.dataset.recordOverride==='up'));}
+    if(resolved?.candidates?.length)detail.insertAdjacentHTML('beforeend','<details class="record-evidence"><summary>资料证据详情</summary><p>资料修订 '+esc(resolved.revision)+'</p><p>判断规则 '+resolved.ruleVersion+'</p>'+resolved.candidates.map(banner=>'<p>'+esc(gachaReference.bannerName(banner,gachaReference.active(state.selected.game)))+' · '+esc(banner.source)+'<br>'+esc(banner.start)+(banner.end?' — '+esc(banner.end):' · 国服资料标注长期，未公布截止')+(banner.evidence?'<br>'+esc(banner.evidence.url):'')+'</p>').join('')+'</details>');
     const button=document.getElementById('record-open-pool');button.hidden=!pool;button.onclick=()=>{document.getElementById('record-dialog').close();openView('pool',pool.type);};
     document.getElementById('record-dialog').showModal();
   }
   function analysisDirty(){return !!state.analysisDraft&&JSON.stringify(state.analysisDraft)!==JSON.stringify(gachaPresentation.analysisOptions(state.settings,state.selected));}
+  async function updateReference(game,{automatic=false}={}){
+    if(state.referenceUpdating||state.busy||!window.gachaReference)return;
+    const operation=operationReports.start('更新'+gachaModel.games[game].label+'游戏资料');state.referenceUpdating=true;render();
+    try{
+      await ensureReference(game);const records=state.datasets[game].records,accountMap=new Map(state.datasets[game].accounts.map(account=>[account.uid,account]));
+      const accountRecords=new Map();for(const record of records){if(!accountRecords.has(record.uid))accountRecords.set(record.uid,[]);accountRecords.get(record.uid).push(record);}
+      const contexts=()=>new Map([...accountMap].map(([uid,account])=>[uid,gachaReference.recordContext(accountRecords.get(uid)||[],game,account)]));let analysisAccounts=contexts();
+      const signature=record=>{const account=analysisAccounts.get(record.uid)||{},result=Number(record.rank_type)===5?gachaReference.upEvidence(record,game,account,[game==='hk4e'?'paimon-moe':'star-rail-station']):gachaReference.resolve(record,game,account);return JSON.stringify([result.value,result.version,result.phase,result.banner?.id,result.candidates.map(item=>item.id).sort()]);};
+      const before=new Map();for(let i=0;i<records.length;i++){before.set(gachaModel.recordKey(game,records[i]),signature(records[i]));if(i%512===511)await new Promise(resolve=>setTimeout(resolve,0));}
+      const result=await gachaReference.update(ats,game);state.referenceStores[game]=result.store;delete state.referenceErrors[game];
+      analysisAccounts=contexts();
+      let changedRecords=0;for(let i=0;i<records.length;i++){const record=records[i];if(signature(record)!==before.get(gachaModel.recordKey(game,record)))changedRecords++;if(i%512===511)await new Promise(resolve=>setTimeout(resolve,0));}
+      state.referenceResults[game]={changed:result.changed,changedRecords:localData?.has(game)?changedRecords:null};selectInitial();
+      operation.success(result.changed?'资料已保存并重新分析':'资料检查完成，无变化');if(!automatic)notice(result.changed?(localData?.has(game)?`资料已更新，${changedRecords} 条记录的归属或 UP 依据发生变化`:'资料已更新，该游戏记录尚未读取，打开账号后使用新资料分析'):'游戏资料没有变化','success');
+    }catch(error){state.referenceErrors[game]=error.message;operation.fail();if(!automatic)notice('资料更新失败，已保留可用资料：'+error.message,'danger');}
+    finally{state.referenceUpdating=false;render();}
+  }
+  const autoAttempts=new Map();
+  async function maybeUpdateReference(){
+    if(!window.gachaReference||!preference('reference-auto-check',false)||state.busy||state.referenceUpdating)return;
+    for(const game of ['hk4e','hkrpg']){
+      await ensureReference(game);const checked=Math.max(state.referenceStores[game]?.checkedAt||0,autoAttempts.get(game)||0);
+      if(Date.now()-checked<7*24*3600000||state.busy||state.referenceUpdating)continue;
+      autoAttempts.set(game,Date.now());await updateReference(game,{automatic:true});
+    }
+  }
+  async function setReferenceAutoCheck(enabled){
+    if(state.busy)return;setBusy(true);
+    const settings=JSON.parse(JSON.stringify(state.settings));settings.preferences||={};settings.preferences['reference-auto-check']={type:'boolean',value:enabled};
+    try{await saveSettings(settings);state.settings=settings;render();}catch(error){notice(error.message,'danger');render();}finally{setBusy(false);}if(state.settings.preferences?.['reference-auto-check']?.value)maybeUpdateReference();
+  }
+  async function setRecordOverride(identity,value){
+    if(state.busy||!state.selected)return;const operation=operationReports.start('修订记录 UP 归属'),key='record-up-overrides:'+gachaModel.key(state.selected),settings=JSON.parse(JSON.stringify(state.settings)),overrides={...preference(key,{})};
+    if(value===null)delete overrides[identity];else overrides[identity]=value;settings.preferences||={};settings.preferences[key]={type:'object',value:overrides};setBusy(true);
+    try{await saveSettings(settings);state.settings=settings;selectInitial();operation.success('用户修订已保存');showRecord(identity);render();notice('已保存修订，原始记录保留','success');}catch(error){operation.fail();notice(error.message,'danger');}finally{setBusy(false);}
+  }
   function updateAnalysisDraft(){state.analysisDraft={sources:[...all('.source-option:checked')].map(item=>item.value),losses:byId('custom-loss')?[...new Set(byId('custom-loss').value.split(/\r?\n/).map(item=>item.trim()).filter(Boolean))]:[]};const dirty=analysisDirty();byId('save-analysis').disabled=state.busy||!dirty;byId('analysis-status').textContent=dirty?'有未应用的修改':'当前设置已保存';}
   async function saveAnalysis(){
     if(state.busy||!analysisDirty())return;const operation=operationReports.start('保存统计设置');state.analysisSaving=true;setBusy(true);
@@ -260,15 +321,14 @@
     const help=one('.sync-help'),full=byId('sync-full');if(help&&full){const actions=document.createElement('div');actions.className='actions';actions.append(full);help.append(actions);}
   }
   function renderData(){
-    const pending=['hk4e','hkrpg'].filter(game=>!localData?.has(game)&&!localData?.failed(game));
-    if(pending.length){ui.content.replaceChildren();return;}
     const counts=accountCounts(),loadedAccounts=accounts().map(account=>({...account,note:preference('account-note:'+gachaModel.key(account),'')}));
     ui.content.innerHTML=gachaViews.data(state,loadedAccounts,counts);
     for(const game of ['hk4e','hkrpg'].filter(game=>localData?.failed(game))){
       ui.content.insertAdjacentHTML('beforeend',`<div class="empty"><p>${gachaModel.games[game].label}记录读取失败。</p><button class="secondary" data-retry-game="${game}">重试读取${gachaModel.games[game].label}</button></div>`);
     }
   }
-  function accountCounts(){const result={};for(const account of accounts())if(localData?.has(account.game))result[gachaModel.key(account)]=state.datasets[account.game].records.filter(item=>item.uid===account.uid).length;return result;}
+  const countIndexes=new WeakMap();
+  function accountCounts(){const result={};for(const game of ['hk4e','hkrpg'])if(localData?.has(game)){const dataset=state.datasets[game];let counts=countIndexes.get(dataset);if(!counts){counts={};for(const account of dataset.accounts)counts[game+':'+account.uid]=0;for(const record of dataset.records){const key=game+':'+record.uid;counts[key]=(counts[key]||0)+1;}countIndexes.set(dataset,counts);}Object.assign(result,counts);}return result;}
   function transferSteps(){return `<ol class="transfer-steps"><li class="${state.transferStage==='select'?'active':''}">1 · 选择账号</li><li class="${state.transferStage==='review'?'active':''}">2 · 核对范围</li><li class="${state.transferStage==='result'?'active':''}">3 · 执行结果</li></ol>`;}
   function exportReady(){return state.exportKeys.length>0&&state.exportKeys.every(key=>localData?.has(key.split(':')[0]));}
   function renderExport(){
@@ -278,10 +338,10 @@
   }
   function selectedImportBundles(){return (pendingImportBundles||[]).filter(bundle=>state.importKeys.includes(gachaModel.key(bundle.account)));}
   function renderImport(){
-    if(state.transferStage==='result'){ui.content.innerHTML=transferSteps()+gachaViews.intro('文件已合并','导入完成',`新增 ${state.transferResult.inserted} 条 · 重复 ${state.transferResult.skipped} 条`)+gachaViews.footnote('原有历史已保留，可以返回总览切换账号查看。');return;}
+    if(state.transferStage==='result'){ui.content.innerHTML=transferSteps()+gachaViews.intro('文件已合并','导入完成',`新增 ${state.transferResult.inserted} 条 · 重复 ${state.transferResult.skipped} 条 · 补全 ${state.transferResult.enriched||0} 条 · 冲突 ${state.transferResult.conflicted||0} 条`)+gachaViews.footnote('原有历史已保留，可以返回总览切换账号查看。');return;}
     const bundles=pendingImportBundles||[],accountMap=new Map(bundles.map(bundle=>[gachaModel.key(bundle.account),bundle.account])),counts={};for(const bundle of bundles)counts[gachaModel.key(bundle.account)]=(counts[gachaModel.key(bundle.account)]||0)+bundle.records.length;
     pendingImportPlan=gachaPresentation.importPlan(state.datasets,selectedImportBundles());
-    ui.content.innerHTML=transferSteps()+gachaViews.intro('从文件合并历史',state.transferStage==='review'?'确认将要合并的记录':'选择要导入的账号','按游戏、账号、卡池和记录 ID 合并，原有记录保留。')+(state.transferStage==='review'?`<section class="wish-panel">${pendingImportPlan.map(item=>`<div class="import-game"><h3>${gachaModel.games[item.game].label}</h3><p>${item.accounts} 个账号 · 新增 ${item.inserted} 条 · 重复 ${item.skipped} 条</p></div>`).join('')}</section><div class="wish-flow-footer"><p class="supporting">确认前不会写入本地记录。</p><div class="actions"><button class="secondary" id="transfer-edit">返回修改范围</button><button id="confirm-import" ${state.importKeys.length?'':'disabled'}>确认合并记录</button></div></div>`:`<div class="wish-choices">${gachaViews.accountChoices([...accountMap.values()],state.importKeys,counts,'import-account')}</div><div class="wish-flow-footer"><p id="transfer-summary" class="supporting">${state.importKeys.length} 个账号已选择</p><button id="transfer-next" ${state.importKeys.length?'':'disabled'}>核对新增与重复数量</button></div>`);
+    ui.content.innerHTML=transferSteps()+gachaViews.intro('从文件合并历史',state.transferStage==='review'?'确认将要合并的记录':'选择要导入的账号','按游戏、账号、卡池和记录 ID 合并，原有记录保留。')+(state.transferStage==='review'?`<section class="wish-panel">${pendingImportPlan.map(item=>`<div class="import-game"><h3>${gachaModel.games[item.game].label}</h3><p>${item.accounts} 个账号 · 新增 ${item.inserted} 条 · 重复 ${item.skipped} 条 · 补全 ${item.enriched} 条 · 冲突 ${item.conflicted} 条</p></div>`).join('')}</section><div class="wish-flow-footer"><p class="supporting">确认前不会写入本地记录。</p><div class="actions"><button class="secondary" id="transfer-edit">返回修改范围</button><button id="confirm-import" ${state.importKeys.length?'':'disabled'}>确认合并记录</button></div></div>`:`<div class="wish-choices">${gachaViews.accountChoices([...accountMap.values()],state.importKeys,counts,'import-account')}</div><div class="wish-flow-footer"><p id="transfer-summary" class="supporting">${state.importKeys.length} 个账号已选择</p><button id="transfer-next" ${state.importKeys.length?'':'disabled'}>核对新增与重复数量</button></div>`);
   }
   function updateTransferSelection(){const exporting=state.view?.kind==='export',keys=exporting?state.exportKeys:state.importKeys;byId('transfer-summary').textContent=`${keys.length} 个账号已选择`;byId('transfer-next').disabled=state.busy||(exporting?!exportReady():!keys.length);}
   function renderAccount(){
@@ -313,6 +373,8 @@
   document.getElementById('distribution-filter-apply').onclick=()=>{state.distributionFilter=distributionDraft;document.getElementById('distribution-filters').close();render();};
   document.getElementById('distribution-filter-reset').onclick=()=>{distributionDraft={mode:state.distributionFilter.mode,resources:[],pools:[]};drawDistributionFilters();};
   function bind(){
+    all('[data-update-reference]').forEach(button=>button.onclick=()=>updateReference(button.dataset.updateReference));
+    byId('reference-auto-check')?.addEventListener('change',event=>setReferenceAutoCheck(event.target.checked));
     byId('open-distribution-filters')?.addEventListener('click',openDistributionFilters);
     all('[data-distribution-mode]').forEach(button=>button.onclick=()=>{state.distributionFilter={...state.distributionFilter,mode:button.dataset.distributionMode};render();});
     all('[data-distribution-index]').forEach(button=>button.onclick=()=>{const filter=state.distributionFilter,group=gachaDistribution.compute(state,filter).groups[Number(button.dataset.distributionIndex)];if(group)openDistributionSummary(filter,group.key,group.label);});
@@ -363,9 +425,12 @@
     byId('account-delete')?.addEventListener('click',()=>{const key=state.view.key;confirmAction('删除这个本地账号？','删除此账号的所有本地抽卡记录，其他账号和米游社登录状态保留。','删除此账号',()=>deleteAccount(key));});
     renderMihoyoQr();setBusy(state.busy);
   }
+  const recordScopes=new WeakMap();
   function applyFilters(){
+    if(state.view?.kind!=='records'&&state.page!=='记录')return;
     const list=byId('record-list');if(!list)return;
-    const records=gachaPresentation.records(state.snapshot,state.selected?.game,state.query,state.pool,state.rarity).filter(record=>!state.recordDrill||gachaDistribution.matches(state,state.recordDrill.filter,state.recordDrill.key,record)),pages=Math.max(1,Math.ceil(records.length/50));
+    let scope=state.snapshot;if(state.recordDrill){const reference=window.gachaReference?.active(state.selected.game);let cached=recordScopes.get(state.recordDrill);if(!cached||cached.source!==state.snapshot||cached.reference!==reference){const group=gachaDistribution.compute(state,state.recordDrill.filter).groups.find(item=>item.key===state.recordDrill.key);cached={source:state.snapshot,reference,snapshot:{records:group?.records||[]}};recordScopes.set(state.recordDrill,cached);}scope=cached.snapshot;}
+    const records=gachaPresentation.records(scope,state.selected?.game,state.query,state.pool,state.rarity),pages=Math.max(1,Math.ceil(records.length/50));
     state.recordPage=Math.min(state.recordPage,pages-1);byId('record-count').textContent=`${records.length} 条匹配记录`;
     list.innerHTML=gachaPresentation.dateGroups(records.slice(state.recordPage*50,(state.recordPage+1)*50)).map(group=>`<section class="wish-date-group"><h3 class="wish-date">${esc(group.date)}</h3>${group.records.map(item=>gachaViews.recordRow(state,item)).join('')}</section>`).join('')||'<div class="empty">没有符合筛选条件的记录。</div>';
     byId('record-pager').innerHTML=`<button id="previous-records" class="secondary browse-action" ${state.recordPage?'':'disabled'}>上一页</button><span>${state.recordPage+1} / ${pages}</span><button id="next-records" class="secondary browse-action" ${state.recordPage+1<pages?'':'disabled'}>下一页</button>`;
@@ -423,8 +488,9 @@
       const candidate=JSON.parse(JSON.stringify(dataset)),result=gachaModel.mergeDataset(candidate,[bundle]);
       await ats.writeDataset(game==='hk4e'?'genshin-records':'starrail-records',encoder.encode(JSON.stringify(candidate)),{accounts:candidate.accounts.length,records:candidate.records.length});
       await cachePreparedLink(bundle.account.uid);state.datasets[game]=candidate;state.linkDraft='';state.selected=bundle.account;selectInitial();state.lastSync={mode,inserted:result.inserted,scanned:bundle.scannedRecords,uid:bundle.account.uid,time:new Date().toLocaleTimeString()};
-      operation.success(`新增 ${result.inserted} 条，检查 ${bundle.scannedRecords} 条`);
-      notice(`${mode==='full'?'全部刷新':'增量获取'}完成：新增 ${result.inserted} 条，检查 ${bundle.scannedRecords} 条`,'success');
+      state.lastSync.enriched=result.enriched;state.lastSync.conflicted=result.conflicted;
+      operation.success(`新增 ${result.inserted} 条，检查 ${bundle.scannedRecords} 条`+(result.enriched||result.conflicted?`，补全 ${result.enriched} 条，冲突 ${result.conflicted} 条`:''));
+      notice(`${mode==='full'?'全部刷新':'增量获取'}完成：新增 ${result.inserted} 条，补全 ${result.enriched} 条，冲突 ${result.conflicted} 条；检查 ${bundle.scannedRecords} 条`,'success');
       state.syncMode=null;state.syncProgress='';render();
     }catch(error){if(gachaLinkCache.expired(error)&&state.link){preparedLinks.delete(state.link.game);await cachedLinks().remove(state.link).catch(()=>{});state.link=null;state.cachedLink=false;state.cacheWarning='';}operation.fail();notice(error.message,'danger');}finally{state.syncMode=null;state.syncProgress='';setBusy(false);const progress=byId('sync-progress');if(progress)progress.hidden=true;}
   }
@@ -443,17 +509,17 @@
   }
   async function confirmImport(){
     if(state.busy||!pendingImportBundles||!state.importKeys.length)return;
-    const operation=operationReports.start('导入 UIGF 记录'),completed=[];let inserted=0,skipped=0;setBusy(true);
+    const operation=operationReports.start('导入 UIGF 记录'),completed=[];let inserted=0,skipped=0,enriched=0,conflicted=0;setBusy(true);
     try{
       // Let the already-ready RPC enqueue running before preparing a potentially large merge.
       await Promise.resolve();
       const plan=gachaPresentation.importPlan(state.datasets,selectedImportBundles());
       for(const item of plan){
         await ats.writeDataset(item.game==='hk4e'?'genshin-records':'starrail-records',encoder.encode(JSON.stringify(item.candidate)),{accounts:item.candidate.accounts.length,records:item.candidate.records.length});
-        state.datasets[item.game]=item.candidate;completed.push(gachaModel.games[item.game].label);inserted+=item.inserted;skipped+=item.skipped;
+        state.datasets[item.game]=item.candidate;completed.push(gachaModel.games[item.game].label);inserted+=item.inserted;skipped+=item.skipped;enriched+=item.enriched;conflicted+=item.conflicted;
       }
-      operation.success(`新增 ${inserted} 条，重复 ${skipped} 条`);state.transferStage='result';state.transferResult={inserted,skipped};pendingImportPlan=null;pendingImportBundles=null;
-      notice(`导入完成：新增 ${inserted} 条，重复 ${skipped} 条`,'success');
+      operation.success(`新增 ${inserted} 条，重复 ${skipped} 条`+(enriched||conflicted?`，补全 ${enriched} 条，冲突 ${conflicted} 条`:''));state.transferStage='result';state.transferResult={inserted,skipped,enriched,conflicted};pendingImportPlan=null;pendingImportBundles=null;
+      notice(`导入完成：新增 ${inserted} 条，重复 ${skipped} 条，补全 ${enriched} 条，冲突 ${conflicted} 条`,'success');
     }catch(error){operation.fail();notice(`${completed.length?'已完成 '+completed.join('、')+'；':''}其余记录导入失败：${error.message}。可重试确认，已完成部分不会重复导入。`,'danger');}
     finally{selectInitial();render();setBusy(false);}
   }
@@ -501,5 +567,5 @@
   document.getElementById('close-record').onclick=()=>document.getElementById('record-dialog').close();
   document.getElementById('cancel-action').onclick=()=>document.getElementById('confirm-dialog').close();
   document.getElementById('open-data').onclick=()=>{document.getElementById('accounts-dialog').close();openView('data');};
-  ui.refresh.onclick=()=>{document.getElementById('accounts-dialog').close();load();};ats.onEvent('app.visibilityChanged',payload=>{if(payload.visible&&payload.widgetEntry)queueWidgetEntry(payload.widgetEntry);});(async()=>{const ready=await ats.ready;queueWidgetEntry(ready?.widgetEntry);await load();await applyWidgetEntry();})();
+  ui.refresh.onclick=()=>{document.getElementById('accounts-dialog').close();load();};ats.onEvent('app.visibilityChanged',payload=>{if(payload.visible&&payload.widgetEntry)queueWidgetEntry(payload.widgetEntry);if(payload.visible&&!initializing)maybeUpdateReference();});(async()=>{const ready=await ats.ready;queueWidgetEntry(ready?.widgetEntry);await load();await applyWidgetEntry();maybeUpdateReference();})();
 })();

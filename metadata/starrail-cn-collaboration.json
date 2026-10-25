@@ -1,0 +1,15 @@
+{
+  "source": {
+    "id": "starrail-cn-collaboration",
+    "url": "https://www.taptap.cn/moment/691958455870688617",
+    "revision": "2025-07-09 official CN collaboration announcement",
+    "kind": "curated-announcement",
+    "hashScope": "structured public identities, not the remote HTML"
+  },
+  "entries": [
+    {"name":"圣剑辉烈之誓","itemName":"Saber","pool":"21","type":"character","version":"3.4","start":"2025-07-11 12:00:00","longTerm":true},
+    {"name":"此身剑所天成","itemName":"Archer","pool":"21","type":"character","version":"3.4","start":"2025-07-11 12:00:00","longTerm":true},
+    {"name":"王的诞生","itemName":"没有回报的加冕","pool":"22","type":"lightcone","version":"3.4","start":"2025-07-11 12:00:00","longTerm":true},
+    {"name":"冬木赤影","itemName":"理想燃烧的地狱","pool":"22","type":"lightcone","version":"3.4","start":"2025-07-11 12:00:00","longTerm":true}
+  ]
+}

@@ -8,14 +8,15 @@
   async function fetch(link,dataset,onProgress=()=>{},options={}) {
     const mode=options.mode||'incremental';
     if(!['incremental','full'].includes(mode))throw new Error('未知的获取模式');
-    const game=gachaModel.games[link.game],records=[],completed=[],existingByAccountPool=new Map();
+    const game=gachaModel.games[link.game],records=[],enrichedRecords=[],completed=[],existingByAccountPool=new Map();
     const completePools=new Set((dataset.poolSyncState||[]).filter(item=>item.historyComplete===true).map(item=>`${item.uid}:${item.poolType}`));
     for(const item of dataset.records||[]) {
       const type=gachaModel.poolType(link.game,item.uigf_gacha_type||item.gacha_type),key=`${item.uid}:${type}`;
       if(!existingByAccountPool.has(key))existingByAccountPool.set(key,new Set());
       existingByAccountPool.get(key).add(String(item.id));
     }
-    let uid='',region=link.parameters.region||'',timezone=8,scannedRecords=0;
+    let uid='',region=link.parameters.region||'',timezone=8,timezoneKnown=false,scannedRecords=0;
+    const localRecords=new Map((dataset.records||[]).map(item=>[gachaModel.recordKey(link.game,item),item]));
     const fetchedIds=new Set();
     for(const pool of game.pools) {
       const type=pool[0],isBeyond=pool[4],pageSize=isBeyond?5:20;
@@ -32,7 +33,7 @@
         const root=await json(url),data=root.data||{};
         if(!Array.isArray(data.list))throw new Error('接口未返回有效记录列表，本次获取未保存');
         const list=data.list;
-        timezone=Number(data.region_time_zone||timezone);region=String(data.region||region);
+        if(!gachaModel.missing(data.region_time_zone)){if(typeof data.region_time_zone==='boolean'||!Number.isFinite(Number(data.region_time_zone))||Number(data.region_time_zone)<-12||Number(data.region_time_zone)>14)throw Error('接口返回的时区无效，本次获取未保存');timezone=Number(data.region_time_zone);timezoneKnown=true;}region=String(data.region??region);
         if(!list.length){reachedEnd=true;finished=true;break;}
         let allKnown=true,lastId='',olderThanOverlap=true;
         for(const item of list) {
@@ -56,13 +57,13 @@
           // Scan the entire page: a duplicate must not hide later entries from the same ten-pull.
           const rawType=String(isBeyond?item.op_gacha_type||type:item.gacha_type||type);
           const key=gachaModel.recordKey(link.game,{uid:itemUid,id,gacha_type:rawType});
-          if(known||fetchedIds.has(key))continue;
+          if(fetchedIds.has(key))continue;
+          const normalized=gachaModel.normalizeRecord({...item,gacha_type:rawType},link.game,itemUid,{beyond:isBeyond,source:'official-record-api',timezone:data.region_time_zone,region:data.region});
+          if(gachaModel.missing(isBeyond?item.op_gacha_type:item.gacha_type))normalized.gachaTypeAssumed=true;
+          if(gachaModel.missing(normalized.timezone)&&!timezoneKnown)normalized.timezoneAssumed=true;
+          if(known){const previous=localRecords.get(key);if(!previous)continue;const merged=gachaModel.mergeRecord(previous,normalized);if(!merged.enriched&&!merged.conflicted)continue;}
           fetchedIds.add(key);
-          records.push({uid:itemUid,id,gacha_type:rawType,
-            uigf_gacha_type:link.game==='hk4e'?gachaModel.poolType(link.game,rawType):rawType,
-            gacha_id:String(isBeyond?item.schedule_id||'':item.gacha_id||''),item_id:String(item.item_id||''),
-            name:String(isBeyond?item.item_name||'':item.name||''),item_type:String(item.item_type||''),
-            rank_type:String(item.rank_type||''),count:String(item.count||'1'),time:String(item.time||''),is_up:String(item.is_up??'')});
+          (known?enrichedRecords:records).push(normalized);
         }
         if(list.length<pageSize){reachedEnd=true;finished=true;break;}
         if(cursors.has(lastId))throw new Error('接口分页游标没有推进，本次获取未保存，请重试');
@@ -79,8 +80,8 @@
       await sleep(350);
     }
     if(!uid)throw new Error('没有获取到任何记录；请确认账号至少有一条可查询记录');
-    return {account:{game:link.game,uid,region,timezone,lang:link.parameters.lang||'zh-cn',lastSyncAt:Date.now()},
-      records:records.map(item=>({...item,uid:item.uid||uid})),completedPoolTypes:completed,scannedRecords,mode};
+    return {account:{game:link.game,uid,region,timezone,timezoneAssumed:!timezoneKnown,lang:link.parameters.lang||'zh-cn',lastSyncAt:Date.now()},
+      records:records.map(item=>({...item,uid:item.uid||uid})),enrichedRecords,completedPoolTypes:completed,scannedRecords,mode};
   }
   function extractLatestLink(lines,game){
     for(let index=lines.length-1;index>=0;index--){

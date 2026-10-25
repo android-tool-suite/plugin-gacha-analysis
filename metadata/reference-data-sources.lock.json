@@ -1,0 +1,136 @@
+{
+  "schemaVersion": 1,
+  "games": {
+    "hk4e": {
+      "revision": "ca308475cd4941b6335a693f372d7e1904aebdaa9a9ab61f12e2848abed55e98",
+      "contentRevision": "86efde156f6a5b0072a621bf1bc36e5e03acc6c01aeefeb31538c17f2ace076e",
+      "banners": 608,
+      "versions": 106,
+      "sources": [
+        {
+          "id": "current-banner-watcher",
+          "url": "https://raw.githubusercontent.com/UIGF-org/CurrentBannerWatcher/main/banner-data.json",
+          "sha256": "27e8e810a0d76ad49a1bfcba34475e2ae382e4f5500a614b53b3ac9ac798a6cf",
+          "fetchedAt": 1791807998142.6926,
+          "revision": null
+        },
+        {
+          "id": "genshin-cn-chronicle",
+          "url": "https://wiki.biligame.com/ys/%E9%9B%86%E5%BD%95%E7%A5%88%E6%84%BF",
+          "sha256": "a10f1462bfb511fcc9554129a4402ca3f2bfb36aa7d8da414be6db574640e953",
+          "fetchedAt": 1791912774798.9614,
+          "revision": null
+        },
+        {
+          "id": "genshin-cn-history",
+          "url": "https://wiki.biligame.com/ys/%E5%BE%80%E6%9C%9F%E7%A5%88%E6%84%BF",
+          "sha256": "f3f656c2acaa88ab5c0c57d47457aa8d59c8284f51178a41f7a6c4f72e3b22d6",
+          "fetchedAt": 1791912774878.9275,
+          "revision": null
+        },
+        {
+          "id": "genshin-cn-versions",
+          "url": "https://wiki.biligame.com/ys/%E7%89%88%E6%9C%AC%E5%8E%86%E5%8F%B2",
+          "sha256": "9e31e109328baece45d606c3ea3f6b0a33bd00ff2a76c04713efc0a5acd4bb2e",
+          "fetchedAt": 1791819456925.0525,
+          "revision": null
+        },
+        {
+          "id": "hoyolab-genshin-items",
+          "url": "https://sg-public-api.hoyolab.com/event/simulatoros/config?lang=en-us",
+          "sha256": "b9e5400d06a8c4d15023294eda11769d67fb02df0dc1078743e40d208300a23f",
+          "fetchedAt": 1791807999767.0757,
+          "revision": null
+        },
+        {
+          "id": "hoyolab-genshin-names",
+          "url": "https://sg-public-api.hoyolab.com/event/simulatoros/config?lang=zh-cn",
+          "sha256": "993cc574628b4bb362dd070b290b1022793457f61c6c9ff302810f4578e9e37f",
+          "fetchedAt": 1791808544882.3086,
+          "revision": null
+        },
+        {
+          "id": "hoyoverse-announcements",
+          "url": "https://sg-hk4e-api-static.hoyoverse.com/common/hk4e_global/announcement/api/getAnnContent?game=hk4e&game_biz=hk4e_global&region=os_asia&bundle_id=hk4e_global&channel_id=1&level=55&platform=pc&lang=zh-cn",
+          "sha256": "33c8004b3493ca443924faa0f1f5174bbcae8c9051969bfdffddaa69293df92d",
+          "fetchedAt": 1791808142847.0679,
+          "revision": null
+        },
+        {
+          "id": "mihoyo-genshin-announcements",
+          "url": "https://hk4e-ann-api.mihoyo.com/common/hk4e_cn/announcement/api/getAnnContent?game=hk4e&game_biz=hk4e_cn&region=cn_gf01&bundle_id=hk4e_cn&channel_id=1&level=55&platform=pc&lang=zh-cn",
+          "sha256": "5d162690ddf6ce109b1e546d11d8882508abf465e5fe6d21f47cc25191354c33",
+          "fetchedAt": 1791821350765.3904,
+          "revision": null
+        },
+        {
+          "id": "paimon-moe",
+          "url": "https://raw.githubusercontent.com/MadeBaruna/paimon-moe/main/src/data/banners.js",
+          "sha256": "ecc7213536c30bbe1fe0f500946222c2ee07c0c9f51f8525c6e6e8b0ee846233",
+          "fetchedAt": 1791807997711.9614,
+          "revision": null
+        }
+      ],
+      "warnings": []
+    },
+    "hkrpg": {
+      "revision": "f063db45798ff779395dbaf8b74c63e33f41999f719b160ff580300d001306cf",
+      "contentRevision": "04605b4b11010caa9e60983244b0117e804e045a7d870fb467f7b9dbf83040e3",
+      "banners": 574,
+      "versions": 31,
+      "sources": [
+        {
+          "id": "mihoyo-starrail-announcements",
+          "url": "https://hkrpg-ann-api.mihoyo.com/common/hkrpg_cn/announcement/api/getAnnContent?game=hkrpg&game_biz=hkrpg_cn&region=prod_gf_cn&bundle_id=hkrpg_cn&channel_id=1&level=70&platform=pc&lang=zh-cn",
+          "sha256": "af23d1eb739d856e90f64ddfd53c3a2ebda547e5ec602eea383e20b7b0d750e6",
+          "fetchedAt": 1791821350770.9207,
+          "revision": null
+        },
+        {
+          "id": "star-rail-station",
+          "url": "https://starrailstation.com/api/v1/warp_config",
+          "sha256": "176665571af73af40e6ba19a565678e80a0e12aea5422011545cb688d6606830",
+          "fetchedAt": 1791807998727.6257,
+          "revision": null
+        },
+        {
+          "id": "starrail-characters",
+          "url": "https://raw.githubusercontent.com/Mar-7th/StarRailRes/master/index_min/cn/characters.json",
+          "sha256": "6ca9cb6100d8286d891dcd5917f816965685250454a8f4fbbd23942eef91436d",
+          "fetchedAt": 1791808143571.335,
+          "revision": null
+        },
+        {
+          "id": "starrail-cn-collaboration",
+          "url": "https://www.taptap.cn/moment/691958455870688617",
+          "revision": "2025-07-09 official CN collaboration announcement",
+          "kind": "curated-announcement",
+          "hashScope": "structured public identities, not the remote HTML",
+          "sha256": "1e87f194ddff86c1f533d618696083c877d147c2b0e594939352b3cf09bb529e"
+        },
+        {
+          "id": "starrail-cn-history",
+          "url": "https://wiki.biligame.com/sr/%E5%8E%86%E5%8F%B2%E8%B7%83%E8%BF%81",
+          "sha256": "3a01a9841f6aed3ed135bb431a3cccdea5b2e2e0bd022a1da4d373f6dea66669",
+          "fetchedAt": 1791912900176.735,
+          "revision": null
+        },
+        {
+          "id": "starrail-cn-versions",
+          "url": "https://wiki.biligame.com/sr/%E7%89%88%E6%9C%AC%E6%96%B0%E5%A2%9E%E5%86%85%E5%AE%B9",
+          "sha256": "ca06f31a43674b70ae8490df22862db60768781d16a159e827560daa83d475b8",
+          "fetchedAt": 1791819456917.0366,
+          "revision": null
+        },
+        {
+          "id": "starrail-lightcones",
+          "url": "https://raw.githubusercontent.com/Mar-7th/StarRailRes/master/index_min/cn/light_cones.json",
+          "sha256": "14b46b3115b3f25673e1471e58cf117e191c43c80f138a987b03338389698d3a",
+          "fetchedAt": 1791808144328.4365,
+          "revision": null
+        }
+      ],
+      "warnings": []
+    }
+  }
+}
